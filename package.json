@@ -1,0 +1,28 @@
+{
+  "name": "script-skill",
+  "version": "1.0.0",
+  "description": "WhatsApp-driven viral reel script generator for American Hairline",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "google-auth-library": "^10.6.2",
+    "google-spreadsheet": "^5.2.0",
+    "lru-cache": "^11.0.2",
+    "multer": "^2.1.1",
+    "openai": "^4.71.1",
+    "pino": "^9.5.0",
+    "pino-pretty": "^11.3.0",
+    "zod": "^3.23.8"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
