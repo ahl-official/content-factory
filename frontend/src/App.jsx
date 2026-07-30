@@ -3,13 +3,30 @@ import { useState, useRef, useEffect } from 'react';
 const API_URL = 'http://localhost:3000/api';
 
 const STATUS_LABELS = {
+  idea:            { label: 'Idea',             color: '#94a3b8', bg: 'rgba(148,163,184,0.15)' },
   draft:           { label: 'In Progress',      color: '#818cf8', bg: 'rgba(99,102,241,0.15)'  },
   sent_to_sir:     { label: 'Waiting for Sir',  color: '#f59e0b', bg: 'rgba(245,158,11,0.15)'  },
   sir_responded:   { label: "Sir's Opinion In", color: '#10b981', bg: 'rgba(16,185,129,0.15)'  },
   script_ready:    { label: 'Script Ready ✓',   color: '#a78bfa', bg: 'rgba(167,139,250,0.15)' },
   script_approved: { label: 'Script Approved',  color: '#34d399', bg: 'rgba(52,211,153,0.15)'  },
   hooks_ready:     { label: 'Hooks Ready 🪝',   color: '#f472b6', bg: 'rgba(244,114,182,0.15)' },
+  ready_to_shoot:  { label: 'Ready to Shoot 🎬',color: '#fbbf24', bg: 'rgba(251,191,36,0.15)'  },
 };
+
+const AGENTS_LIST = [
+  { id: 1, key: 'research', name: '1. Research Agent', icon: '🔬', mission: 'Discover high-value content opportunities.', responsibilities: ['Competitor research', 'Audience pain points', 'Frequently asked questions', 'Industry trends', 'IG/YT/Reddit/Quora research', 'Comment analysis', 'Consumer psychology', 'Market gaps'] },
+  { id: 2, key: 'angle_generator', name: '2. Content Angle Generator', icon: '🧭', mission: 'Generate unique angles from a single topic across 19 formats.', responsibilities: ['Create 50–100 content angles', 'Myths, Mistakes, Comparisons, Reactions, Consultations, Celebrity examples, Case studies, Experiments, POVs, Storytelling, FAQs, Objections, Cost breakdowns, Emotional stories, Beginner mistakes, Behind the scenes, Before vs After, Day-in-the-life, Do\'s & Don\'ts'] },
+  { id: 3, key: 'strategist', name: '3. Content Strategist', icon: '🎯', mission: 'Decide what content should be produced.', responsibilities: ['Prioritize content ideas', 'Select highest-impact angle', 'Define target audience', 'Define objective: Views/Shares/Saves/Leads', 'Build content calendar', 'Decide content format'] },
+  { id: 4, key: 'hook_specialist', name: '4. Hook Specialist', icon: '🪝', mission: 'Maximize scroll-stopping power.', responsibilities: ['Generate multiple hooks', 'Pattern interrupts', 'Curiosity gaps', 'Opening visuals', 'First 3-sec optimization', 'Thumbnail opening frame suggestions'] },
+  { id: 5, key: 'script_writer', name: '5. Script Writer', icon: '📝', mission: 'Write high-retention scripts.', responsibilities: ['Reel scripts', 'Storytelling', 'Strong CTA', 'Retention loops', 'Conversational language', 'Multiple script versions'] },
+  { id: 6, key: 'creative_director', name: '6. Creative Director', icon: '🎬', mission: 'Plan visual execution.', responsibilities: ['Shot list', 'Camera angles', 'B-roll ideas', 'Props', 'Lighting suggestions', 'Expressions', 'Transitions', 'On-screen text', 'Music suggestions', 'Visual storytelling'] },
+  { id: 7, key: 'thumbnail_strategist', name: '7. Thumbnail Strategist', icon: '🖼️', mission: 'Maximize click-through rate (CTR).', responsibilities: ['Thumbnail psychology', 'Thumbnail concept', 'Thumbnail copy', 'Emotion to trigger', 'Best frame selection', 'A/B testing concepts', 'CTR optimization'] },
+  { id: 8, key: 'thumbnail_designer', name: '8. Thumbnail Designer', icon: '🎨', mission: 'Create the final thumbnail specifications.', responsibilities: ['Execute approved concept', 'Typography', 'Layout', 'Cut-outs', 'Background cleanup', 'Color correction', 'Branding consistency', 'Export-ready files'] },
+  { id: 9, key: 'video_editor', name: '9. Video Editor Agent', icon: '✂️', mission: 'Maximize viewer retention.', responsibilities: ['Edit pacing', 'Remove dead moments', 'Graphics', 'Captions', 'Sound effects', 'Zooms', 'Motion graphics', 'Retention improvements', 'Platform optimization'] },
+  { id: 10, key: 'brand_consistency', name: '10. Brand Consistency', icon: '🛡️', mission: 'Ensure every reel strengthens the brand.', responsibilities: ['Brand voice', 'Messaging consistency', 'Premium positioning', 'Educational tone', 'Claims verification', 'CTA consistency', 'Brand guideline compliance'] },
+  { id: 11, key: 'quality_control', name: '11. Quality Control (QC)', icon: '✅', mission: 'Critique every reel before publishing.', responsibilities: ['Review hook', 'Review script', 'Review visuals', 'Review thumbnail', 'Review edit', 'Identify weak sections', 'Identify drop-off risks', 'Improve clarity', 'Check factual accuracy', 'Score overall quality'] },
+  { id: 12, key: 'analytics', name: '12. Analytics Agent', icon: '📊', mission: 'Continuously improve content performance.', responsibilities: ['Analyze views', 'Hook retention', 'Average watch time', 'Shares', 'Saves', 'Comments', 'Leads generated', 'CTR', 'Identify winning patterns', 'Recommend future improvements'] }
+];
 
 function getNextId() {
   try {
@@ -23,7 +40,7 @@ function getNextId() {
 }
 let nextId = getNextId();
 
-function createTopic(title, targetAudienceId = null) {
+function createTopic(title, targetAudienceId = null, brandVoiceId = null) {
   return {
     id: nextId++,
     title,
@@ -32,9 +49,11 @@ function createTopic(title, targetAudienceId = null) {
     sirFeedback: '',
     audioFile: null,
     scriptVersions: [],
+    agentOutputs: {}, // Populated by the 12 specialized agents
     status: 'draft',
     creatorId: null,
     targetAudienceId: targetAudienceId,
+    brandVoiceId: brandVoiceId,
     hooks: [], // Generated hooks
     selectedHook: null, // Final approved hook
   };
@@ -43,7 +62,7 @@ function createTopic(title, targetAudienceId = null) {
 /* ═══════════════════════════════════════════════
    MAIN APP
 ═══════════════════════════════════════════════ */
-export default function App() {
+function App() {
   const [view, setView]                     = useState('board');
   const [isLoadingDB, setIsLoadingDB]       = useState(true);
   const [dbError, setDbError]               = useState('');
@@ -62,9 +81,15 @@ export default function App() {
   const [creatorReferences, setCreatorReferences] = useState([]);
   const [targetAudiences, setTargetAudiences] = useState([]);
   const [hookLibrary, setHookLibrary] = useState([]);
+  const [brandVoices, setBrandVoices] = useState([]);
+  const [thumbnailStyles, setThumbnailStyles] = useState([]);
+  const [editingStyles, setEditingStyles] = useState([]);
   
   const [activeCreatorId, setActiveCreatorId] = useState(null);
   const [activeAudienceId, setActiveAudienceId] = useState(null);
+  const [activeBrandVoiceId, setActiveBrandVoiceId] = useState(null);
+  const [activeThumbnailStyleId, setActiveThumbnailStyleId] = useState(null);
+  const [activeEditingStyleId, setActiveEditingStyleId] = useState(null);
 
   // 1. Initial Load from Google Sheets DB
   useEffect(() => {
@@ -76,8 +101,39 @@ export default function App() {
         if (data.creatorReferences) setCreatorReferences(data.creatorReferences);
         if (data.targetAudiences) setTargetAudiences(data.targetAudiences);
         if (data.hookLibrary) setHookLibrary(data.hookLibrary);
+        
+        if (data.brandVoices && data.brandVoices.length > 0) {
+          setBrandVoices(data.brandVoices);
+        } else {
+          // Pre-fill American Hairline if empty
+          setBrandVoices([{
+            id: 1, name: 'American Hairline (AHL)', tone: 'Premium clinical positioning',
+            rules: 'Must be empathetic, authoritative, and non-salesy. Do not make false medical promises. Focus on world-class non-surgical hair restoration.'
+          }]);
+        }
+        if (data.thumbnailStyles && data.thumbnailStyles.length > 0) {
+          setThumbnailStyles(data.thumbnailStyles);
+        } else {
+          setThumbnailStyles([{
+            id: 1, name: 'AHL Default Thumbnail', 
+            rules: '1. Visual Concept & Frame Selection (what exact moment from the video is frozen)\n2. Emotion to Trigger (curiosity, shock, relief, empathy)\n3. Big Bold Text Overlay (3-4 words max, contrasting with the spoken hook)\n4. A/B Testing rationale'
+          }]);
+        }
+
+        if (data.editingStyles && data.editingStyles.length > 0) {
+          setEditingStyles(data.editingStyles);
+        } else {
+          setEditingStyles([{
+            id: 1, name: 'AHL Fast Paced Retention', 
+            rules: '1. Pacing & Cut Rules (remove all dead air, J-cuts and L-cuts, jump cuts every 2.5-3 seconds)\n2. Visual Graphics & Zooms (subtle punch-ins on key words, kinetic typography for captions)\n3. SFX & Sound Design (subtle whooshes, risers, heartbeat audio during reveals)\n4. Platform Optimization (9:16 vertical safe zones, loop transition at the end)'
+          }]);
+        }
+        
         if (data.activeCreatorId !== undefined) setActiveCreatorId(data.activeCreatorId);
         if (data.activeAudienceId !== undefined) setActiveAudienceId(data.activeAudienceId);
+        if (data.activeBrandVoiceId !== undefined) setActiveBrandVoiceId(data.activeBrandVoiceId || 1);
+        if (data.activeThumbnailStyleId !== undefined) setActiveThumbnailStyleId(data.activeThumbnailStyleId || 1);
+        if (data.activeEditingStyleId !== undefined) setActiveEditingStyleId(data.activeEditingStyleId || 1);
       })
       .catch(e => {
         console.error("DB Load Error:", e);
@@ -95,15 +151,21 @@ export default function App() {
       creatorReferences,
       targetAudiences,
       hookLibrary,
+      brandVoices,
+      thumbnailStyles,
+      editingStyles,
       activeCreatorId: activeCreatorId || '',
-      activeAudienceId: activeAudienceId || ''
+      activeAudienceId: activeAudienceId || '',
+      activeBrandVoiceId: activeBrandVoiceId || '',
+      activeThumbnailStyleId: activeThumbnailStyleId || '',
+      activeEditingStyleId: activeEditingStyleId || ''
     };
     fetch(`${API_URL}/db/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     }).catch(e => console.error("DB Sync Error:", e));
-  }, [topics, sirStyleGuide, creatorReferences, targetAudiences, hookLibrary, activeCreatorId, activeAudienceId, isLoadingDB]);
+  }, [topics, sirStyleGuide, creatorReferences, targetAudiences, hookLibrary, brandVoices, thumbnailStyles, editingStyles, activeCreatorId, activeAudienceId, activeBrandVoiceId, activeThumbnailStyleId, activeEditingStyleId, isLoadingDB]);
 
   // Called every time Sir gives feedback on anything
   const learnFromFeedback = async ({ sirFeedback, scriptBefore, topic }) => {
@@ -131,7 +193,7 @@ export default function App() {
   const openTopic = (id) => { setActiveTopic(id); setView('topic'); };
 
   const addTopic = (title, targetAudienceId = null) => {
-    const t = createTopic(title, targetAudienceId);
+    const t = createTopic(title, targetAudienceId, activeBrandVoiceId);
     setTopics(prev => [...prev, t]);
     setActiveTopic(t.id);
     setView('topic');
@@ -202,6 +264,15 @@ export default function App() {
         <button className={`btn ${view === 'audiences' ? '' : 'btn-secondary'}`} onClick={() => setView('audiences')}>
           🎯 Target Audience {activeAudienceId ? '●' : ''}
         </button>
+        <button className={`btn ${view === 'brands' ? '' : 'btn-secondary'}`} onClick={() => setView('brands')}>
+          👑 Brand Voices {activeBrandVoiceId ? '●' : ''}
+        </button>
+        <button className={`btn ${view === 'thumbnails' ? '' : 'btn-secondary'}`} onClick={() => setView('thumbnails')}>
+          🖼️ Thumbnail Styles {activeThumbnailStyleId ? '●' : ''}
+        </button>
+        <button className={`btn ${view === 'editing' ? '' : 'btn-secondary'}`} onClick={() => setView('editing')}>
+          ✂️ Editing Styles {activeEditingStyleId ? '●' : ''}
+        </button>
         <button className={`btn ${view === 'hooks' ? '' : 'btn-secondary'}`} onClick={() => setView('hooks')}>
           🪝 Hook Library
         </button>
@@ -241,12 +312,15 @@ export default function App() {
       )}
 
       {view === 'board' && <BoardView topics={topics} setTopics={setTopics} onOpen={openTopic} onNew={() => setView('ideas')} updateTopic={updateTopic} setError={setError} />}
-      {view === 'ideas' && <IdeasView ideas={ideas} isGenerating={isGeneratingIdeas} onGenerate={generateIdeas} onSelect={addTopic} customTopic={customTopic} setCustomTopic={setCustomTopic} targetAudiences={targetAudiences} />}
+      {view === 'ideas' && <IdeasView ideas={ideas} isGenerating={isGeneratingIdeas} onGenerate={generateIdeas} onSelect={addTopic} customTopic={customTopic} setCustomTopic={setCustomTopic} targetAudiences={targetAudiences} brandVoices={brandVoices} setIdeas={setIdeas} />}
       {view === 'guide' && <StyleGuideView guide={sirStyleGuide} onUpdate={setSirStyleGuide} />}
       {view === 'creators' && <CreatorPlaybookView creatorReferences={creatorReferences} setCreatorReferences={setCreatorReferences} activeCreatorId={activeCreatorId} setActiveCreatorId={setActiveCreatorId} />}
       {view === 'audiences' && <TargetAudienceView targetAudiences={targetAudiences} setTargetAudiences={setTargetAudiences} activeAudienceId={activeAudienceId} setActiveAudienceId={setActiveAudienceId} />}
+      {view === 'brands' && <BrandVoicesView brandVoices={brandVoices} setBrandVoices={setBrandVoices} activeBrandVoiceId={activeBrandVoiceId} setActiveBrandVoiceId={setActiveBrandVoiceId} />}
+      {view === 'thumbnails' && <ThumbnailStylesView thumbnailStyles={thumbnailStyles} setThumbnailStyles={setThumbnailStyles} activeThumbnailStyleId={activeThumbnailStyleId} setActiveThumbnailStyleId={setActiveThumbnailStyleId} />}
+      {view === 'editing' && <EditingStylesView editingStyles={editingStyles} setEditingStyles={setEditingStyles} activeEditingStyleId={activeEditingStyleId} setActiveEditingStyleId={setActiveEditingStyleId} />}
       {view === 'hooks' && <HookLibraryView hookLibrary={hookLibrary} setHookLibrary={setHookLibrary} />}
-      {view === 'topic' && currentTopic && <TopicDetail topic={currentTopic} updateTopic={updateTopic} onBack={() => setView('board')} setError={setError} sirStyleGuide={sirStyleGuide} learnFromFeedback={learnFromFeedback} creatorReferences={creatorReferences} targetAudiences={targetAudiences} hookLibrary={hookLibrary} activeCreatorId={activeCreatorId} activeAudienceId={activeAudienceId} />}
+      {view === 'topic' && currentTopic && <TopicDetail topic={currentTopic} updateTopic={updateTopic} onBack={() => setView('board')} setError={setError} sirStyleGuide={sirStyleGuide} learnFromFeedback={learnFromFeedback} creatorReferences={creatorReferences} targetAudiences={targetAudiences} brandVoices={brandVoices} thumbnailStyles={thumbnailStyles} editingStyles={editingStyles} hookLibrary={hookLibrary} activeCreatorId={activeCreatorId} activeAudienceId={activeAudienceId} />}
     </div>
   );
 }
@@ -374,8 +448,47 @@ function TopicCard({ topic, onOpen, updateTopic, setError }) {
 /* ═══════════════════════════════════════════════
    IDEAS VIEW
 ═══════════════════════════════════════════════ */
-function IdeasView({ ideas, isGenerating, onGenerate, onSelect, customTopic, setCustomTopic, targetAudiences }) {
+function IdeasView({ ideas, isGenerating, onGenerate, onSelect, customTopic, setCustomTopic, targetAudiences, setIdeas }) {
   const [selectedAudienceId, setSelectedAudienceId] = useState('');
+  const [isTranscribingRef, setIsTranscribingRef] = useState(false);
+  const [referenceTranscript, setReferenceTranscript] = useState('');
+  const [isGeneratingFromRef, setIsGeneratingFromRef] = useState(false);
+  const [refError, setRefError] = useState('');
+
+  const handleRefUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsTranscribingRef(true);
+    setRefError('');
+    const formData = new FormData();
+    formData.append('audio', file);
+    try {
+      const res = await fetch(`${API_URL}/transcribe`, { method: 'POST', body: formData });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
+      const data = await res.json();
+      setReferenceTranscript(data.text || '');
+    } catch (err) { setRefError('Transcription failed: ' + err.message); }
+    finally { setIsTranscribingRef(false); }
+  };
+
+  const handleGenerateFromRef = async () => {
+    if (!referenceTranscript.trim()) return;
+    setIsGeneratingFromRef(true);
+    setRefError('');
+    try {
+      const res = await fetch(`${API_URL}/ideas/from-video`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript: referenceTranscript })
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
+      const data = await res.json();
+      if (data.ideas && Array.isArray(data.ideas)) {
+        setIdeas(prev => [...data.ideas, ...prev]);
+        setReferenceTranscript(''); // Clear on success
+      }
+    } catch (err) { setRefError('Idea generation failed: ' + err.message); }
+    finally { setIsGeneratingFromRef(false); }
+  };
 
   return (
     <div className="glass-panel">
@@ -396,9 +509,43 @@ function IdeasView({ ideas, isGenerating, onGenerate, onSelect, customTopic, set
         </div>
       )}
 
-      <button className="btn" onClick={onGenerate} disabled={isGenerating} style={{ marginBottom: '1.5rem' }}>
-        {isGenerating ? <><div className="loader" style={{ width: 18, height: 18, borderWidth: 2 }} /> Generating...</> : '⚡ Generate New Ideas'}
-      </button>
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+        <button className="btn" onClick={onGenerate} disabled={isGenerating}>
+          {isGenerating ? <><div className="loader" style={{ width: 18, height: 18, borderWidth: 2 }} /> Generating...</> : '⚡ Generate New Ideas'}
+        </button>
+      </div>
+
+      <div style={{ background: 'rgba(236,72,153,0.05)', border: '1px solid rgba(236,72,153,0.2)', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem' }}>
+        <h3 style={{ marginBottom: '0.5rem', color: '#fbcfe8' }}>Extract Ideas from Reference Video</h3>
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>Upload a viral reel (audio or video) to extract its structure and generate tailored ideas.</p>
+        
+        {refError && <div style={{ color: '#fca5a5', fontSize: '0.85rem', marginBottom: '1rem' }}>⚠️ {refError}</div>}
+
+        {!referenceTranscript ? (
+          <div>
+            <label className="btn btn-secondary" style={{ display: 'inline-flex', cursor: 'pointer' }}>
+              {isTranscribingRef ? 'Transcribing...' : '📤 Upload Reference Video/Audio'}
+              <input type="file" accept="audio/*,video/*" style={{ display: 'none' }} onChange={handleRefUpload} disabled={isTranscribingRef} />
+            </label>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <textarea
+              className="input-field"
+              value={referenceTranscript}
+              onChange={e => setReferenceTranscript(e.target.value)}
+              rows={4}
+              style={{ resize: 'vertical' }}
+            />
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button className="btn" onClick={handleGenerateFromRef} disabled={isGeneratingFromRef}>
+                {isGeneratingFromRef ? 'Analyzing & Generating...' : '✨ Generate Ideas from this Structure'}
+              </button>
+              <button className="btn btn-secondary" onClick={() => setReferenceTranscript('')} disabled={isGeneratingFromRef}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
       
       {ideas.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -427,7 +574,7 @@ function IdeasView({ ideas, isGenerating, onGenerate, onSelect, customTopic, set
 /* ═══════════════════════════════════════════════
    TOPIC DETAIL
 ═══════════════════════════════════════════════ */
-function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, learnFromFeedback, creatorReferences, targetAudiences, activeCreatorId, activeAudienceId, hookLibrary }) {
+function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, learnFromFeedback, creatorReferences, targetAudiences, brandVoices, activeCreatorId, activeAudienceId, hookLibrary, thumbnailStyles, editingStyles }) {
   const [chatInput, setChatInput]     = useState('');
   const [isChatting, setIsChatting]   = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -439,7 +586,111 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
   const [revisionFeedback, setRevisionFeedback] = useState('');
   const [isTranscribingRevision, setIsTranscribingRevision] = useState(false);
   const [viewingVersion, setViewingVersion] = useState(null); // null = latest
+  const [activeAgentIndex, setActiveAgentIndex] = useState(0); // 0 to 11
+  const [isRunningAgent, setIsRunningAgent]     = useState(false);
+  const [isRunningPipeline, setIsRunningPipeline] = useState(false);
+  const [customHookText, setCustomHookText]     = useState('');
+  const [hookFeedback, setHookFeedback]         = useState('');
   const chatEndRef = useRef(null);
+
+  const runSingleAgent = async (agentKey) => {
+    setIsRunningAgent(true);
+    setError('');
+    try {
+      const audienceRef = targetAudiences.find(a => a.id === topic.targetAudienceId);
+      const targetAudience = audienceRef ? audienceRef.notes : null;
+      const brandRef = brandVoices.find(b => b.id === topic.brandVoiceId);
+      const brandVoice = brandRef ? { name: brandRef.name, tone: brandRef.tone, rules: brandRef.rules } : null;
+      const thumbRef = thumbnailStyles?.find(t => t.id === topic.thumbnailStyleId);
+      const thumbnailStyle = thumbRef ? { name: thumbRef.name, rules: thumbRef.rules } : null;
+      const editRef = editingStyles?.find(e => e.id === topic.editingStyleId);
+      const editingStyle = editRef ? { name: editRef.name, rules: editRef.rules } : null;
+      const prevAgentIdx = AGENTS_LIST.findIndex(a => a.key === agentKey) - 1;
+      let prevOutput = prevAgentIdx >= 0 && topic.agentOutputs ? (topic.agentOutputs[AGENTS_LIST[prevAgentIdx].key] || '') : '';
+      
+      let inputDataToPass = prevOutput || topic.suggestedAngles?.join('\n') || '';
+      const agentId = AGENTS_LIST.find(a => a.key === agentKey)?.id;
+      
+      // Post-production agents (Agent 6-12) need the full script and prior outputs, not just the single previous step
+      if (agentId && agentId >= 6) {
+        inputDataToPass = `[Script Writer]:\n${topic.agentOutputs?.script_writer || ''}\n\n`;
+        if (agentId >= 7) inputDataToPass += `[Creative Director]:\n${topic.agentOutputs?.creative_director || ''}\n\n`;
+        if (agentId >= 9) inputDataToPass += `[Thumbnail Designer]:\n${topic.agentOutputs?.thumbnail_designer || ''}\n\n`;
+        if (agentId >= 10) inputDataToPass += `[Video Editor]:\n${topic.agentOutputs?.video_editor || ''}\n\n`;
+        if (agentId >= 11) inputDataToPass += `[Brand Consistency]:\n${topic.agentOutputs?.brand_consistency || ''}\n\n`;
+        if (agentId >= 12) inputDataToPass += `[Quality Control]:\n${topic.agentOutputs?.quality_control || ''}\n\n`;
+      }
+
+      const res = await fetch(`${API_URL}/agents/run`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agentKey,
+          topic: topic.title,
+          inputData: inputDataToPass,
+          sirStyleGuide,
+          targetAudience,
+          brandVoice,
+          thumbnailStyle,
+          editingStyle
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
+      const data = await res.json();
+      if (data.output) {
+        const currentOutputs = topic.agentOutputs || {};
+        updateTopic(topic.id, {
+          agentOutputs: { ...currentOutputs, [agentKey]: data.output }
+        });
+      }
+    } catch (e) {
+      setError(`Agent execution failed: ${e.message}`);
+    } finally {
+      setIsRunningAgent(false);
+    }
+  };
+
+  const runSequentialPipeline = async (startId = 1, endId = 12) => {
+    setIsRunningPipeline(true);
+    setError('');
+    try {
+      const audienceRef = targetAudiences.find(a => a.id === topic.targetAudienceId);
+      const targetAudience = audienceRef ? audienceRef.notes : null;
+      const brandRef = brandVoices.find(b => b.id === topic.brandVoiceId);
+      const brandVoice = brandRef ? { name: brandRef.name, tone: brandRef.tone, rules: brandRef.rules } : null;
+      const thumbRef = thumbnailStyles?.find(t => t.id === topic.thumbnailStyleId);
+      const thumbnailStyle = thumbRef ? { name: thumbRef.name, rules: thumbRef.rules } : null;
+      const editRef = editingStyles?.find(e => e.id === topic.editingStyleId);
+      const editingStyle = editRef ? { name: editRef.name, rules: editRef.rules } : null;
+
+      const res = await fetch(`${API_URL}/agents/pipeline`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: topic.title,
+          startAgentId: startId,
+          endAgentId: endId,
+          initialData: startId === 1 ? '' : (topic.agentOutputs[AGENTS_LIST[startId - 2]?.key] || ''),
+          sirStyleGuide,
+          targetAudience,
+          brandVoice,
+          thumbnailStyle,
+          editingStyle
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
+      const data = await res.json();
+      if (data.results) {
+        const newOutputs = { ...(topic.agentOutputs || {}) };
+        data.results.forEach(r => {
+          newOutputs[r.agentKey] = r.output;
+        });
+        updateTopic(topic.id, { agentOutputs: newOutputs });
+      }
+    } catch (e) {
+      setError(`Pipeline execution failed: ${e.message}`);
+    } finally {
+      setIsRunningPipeline(false);
+    }
+  };
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [topic.chatHistory, topic.suggestedAngles]);
 
@@ -533,11 +784,13 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
       const creatorInspiration = creatorRef ? creatorRef.styleNotes : null;
       const audienceRef = targetAudiences.find(a => a.id === topic.targetAudienceId);
       const targetAudience = audienceRef ? audienceRef.notes : null;
+      const brandRef = brandVoices.find(b => b.id === topic.brandVoiceId);
+      const brandVoice = brandRef ? { name: brandRef.name, tone: brandRef.tone, rules: brandRef.rules } : null;
 
       const context = topic.chatHistory.map(m => `${m.role === 'user' ? 'WRITER' : 'AI'}: ${m.content}`).join('\n');
       const res = await fetch(`${API_URL}/generate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: topic.title, context, transcript: topic.sirFeedback, sirStyleGuide, creatorInspiration, targetAudience }),
+        body: JSON.stringify({ topic: topic.title, context, transcript: topic.sirFeedback, sirStyleGuide, creatorInspiration, targetAudience, brandVoice, formatMode: topic.formatMode || 'reel' }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
       const data = await res.json();
@@ -581,7 +834,7 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
 
       const res = await fetch(`${API_URL}/revise`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentScript, sirFeedback: revisionFeedback, previousRevisions, sirStyleGuide, creatorInspiration, targetAudience }),
+        body: JSON.stringify({ currentScript, sirFeedback: revisionFeedback, previousRevisions, sirStyleGuide, creatorInspiration, targetAudience, formatMode: topic.formatMode || 'reel' }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
       const data = await res.json();
@@ -600,13 +853,13 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
     finally { setIsRevising(false); }
   };
 
-  const generateHooks = async () => {
+  const generateHooks = async (customFeedback = '') => {
     setIsGenerating(true);
     setError('');
     try {
       const res = await fetch(`${API_URL}/hooks`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script: latestScript, hookLibrary }),
+        body: JSON.stringify({ script: latestScript, hookLibrary, feedback: typeof customFeedback === 'string' ? customFeedback : hookFeedback }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
       const data = await res.json();
@@ -615,13 +868,36 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
           hooks: data.hooks,
           status: 'hooks_ready',
         });
+        setHookFeedback('');
         setDetailTab('hooks');
       }
     } catch (e) { setError('Hook generation failed: ' + e.message); }
     finally { setIsGenerating(false); }
   };
 
-  const s = STATUS_LABELS[topic.status];
+  const generateConsultationHooks = async (customFeedback = '') => {
+    setIsGenerating(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_URL}/consultation-hooks`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script: latestScript, topic: topic.title, feedback: typeof customFeedback === 'string' ? customFeedback : hookFeedback }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
+      const data = await res.json();
+      if (data.hooks) {
+        updateTopic(topic.id, {
+          hooks: data.hooks,
+          status: 'hooks_ready',
+        });
+        setHookFeedback('');
+        setDetailTab('hooks');
+      }
+    } catch (e) { setError('Consultation hook generation failed: ' + e.message); }
+    finally { setIsGenerating(false); }
+  };
+
+  const s = STATUS_LABELS[topic.status] || STATUS_LABELS['idea'];
 
   const audienceSelector = (
     <div style={{ marginBottom: '1rem', background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
@@ -632,6 +908,60 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
         <option value="">None (General Audience)</option>
         {targetAudiences.map(a => (
           <option key={a.id} value={a.id}>{a.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+
+  const formatSelector = (
+    <div style={{ marginBottom: '1rem', background: 'rgba(139,92,246,0.08)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(139,92,246,0.3)' }}>
+      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: '#ddd6fe', fontWeight: 600 }}>
+        🎬 Video Script & Hook Mode
+      </label>
+      <select className="input-field" style={{ padding: '0.5rem', borderColor: 'rgba(139,92,246,0.4)', background: 'rgba(0,0,0,0.4)', color: '#fff' }} value={topic.formatMode || 'reel'} onChange={e => updateTopic(topic.id, { formatMode: e.target.value })}>
+        <option value="reel">✨ Informational Reel (Vinitt Monologue to Camera)</option>
+        <option value="consultation">🎥 Consultation Mini-Doc (7-Part Reality Interaction)</option>
+      </select>
+    </div>
+  );
+
+  const brandSelector = (
+    <div style={{ marginBottom: '1rem', background: 'rgba(251,191,36,0.05)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(251,191,36,0.3)' }}>
+      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: '#fde68a' }}>
+        👑 Brand Voice
+      </label>
+      <select className="input-field" style={{ padding: '0.5rem' }} value={topic.brandVoiceId || ''} onChange={e => updateTopic(topic.id, { brandVoiceId: e.target.value ? parseInt(e.target.value) : null })}>
+        <option value="">Default Backend Settings</option>
+        {brandVoices?.map(b => (
+          <option key={b.id} value={b.id}>{b.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+
+  const thumbnailSelector = (
+    <div style={{ marginBottom: '1rem', background: 'rgba(236,72,153,0.05)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(236,72,153,0.3)' }}>
+      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: '#fbcfe8' }}>
+        🖼️ Thumbnail Style
+      </label>
+      <select className="input-field" style={{ padding: '0.5rem' }} value={topic.thumbnailStyleId || ''} onChange={e => updateTopic(topic.id, { thumbnailStyleId: e.target.value ? parseInt(e.target.value) : null })}>
+        <option value="">Default Backend Settings</option>
+        {thumbnailStyles?.map(s => (
+          <option key={s.id} value={s.id}>{s.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+
+  const editingSelector = (
+    <div style={{ marginBottom: '1rem', background: 'rgba(14,165,233,0.05)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(14,165,233,0.3)' }}>
+      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: '#bae6fd' }}>
+        ✂️ Editing Style
+      </label>
+      <select className="input-field" style={{ padding: '0.5rem' }} value={topic.editingStyleId || ''} onChange={e => updateTopic(topic.id, { editingStyleId: e.target.value ? parseInt(e.target.value) : null })}>
+        <option value="">Default Backend Settings</option>
+        {editingStyles?.map(s => (
+          <option key={s.id} value={s.id}>{s.name}</option>
         ))}
       </select>
     </div>
@@ -653,10 +983,15 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
       {/* Sub-tabs */}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '1rem', flexWrap: 'wrap' }}>
         {[
-          { key: 'chat',        label: '💬 Discuss' },
-          { key: 'sirs_opinion',label: "🎙️ Sir's Opinion" },
-          { key: 'script',      label: `📝 Script${versionCount > 0 ? ` (v${versionCount})` : ''}` },
-          { key: 'hooks',       label: '🪝 Hooks' },
+          { key: 'chat',        label: '💬 1. Discuss & Angle' },
+          { key: 'sirs_opinion',label: "🎙️ 2. Sir's Opinion" },
+          { key: 'script',      label: `📝 3. Script${versionCount > 0 ? ` (v${versionCount})` : ''}` },
+          { key: 'hooks',       label: '🪝 4. Hooks' },
+          { key: 'thumbnail',   label: '🖼️ 5. Thumbnail & Title' },
+          { key: 'production',  label: '🎬 6. Shot List & Edit' },
+          { key: 'qc_audit',    label: '🛡️ 7. QC & Brand Score' },
+          { key: 'analytics',   label: '📊 8. Analytics' },
+          { key: 'agents',      label: '🤖 12-Agent Inspector' },
         ].map(tab => (
           <button key={tab.key} className={`btn ${detailTab !== tab.key ? 'btn-secondary' : ''}`}
             onClick={() => setDetailTab(tab.key)} style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
@@ -739,6 +1074,10 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
             onChange={e => updateTopic(topic.id, { sirFeedback: e.target.value, status: e.target.value.trim() ? 'sir_responded' : topic.status })}
             placeholder="Paste Sir's text reply, or upload the audio above to auto-transcribe…" />
           <div style={{ marginTop: '1.5rem' }}>
+            {formatSelector}
+            {brandSelector}
+            {thumbnailSelector}
+            {editingSelector}
             {targetAudiences.length > 0 && audienceSelector}
             <button className="btn" onClick={generateScript} disabled={isGenerating || !topic.sirFeedback.trim()}>
               {isGenerating ? <><div className="loader" style={{ width: 18, height: 18, borderWidth: 2 }} /> Generating…</> : '✨ Generate Script'}
@@ -758,7 +1097,13 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
               </p>
               {topic.sirFeedback && (
                 <>
-                  {targetAudiences.length > 0 && <div style={{ textAlign: 'left', maxWidth: '300px', margin: '0 auto 1rem auto' }}>{audienceSelector}</div>}
+                  <div style={{ textAlign: 'left', maxWidth: '340px', margin: '0 auto 1rem auto' }}>
+                    {audienceSelector}
+                    {brandSelector}
+                    {thumbnailSelector}
+                    {editingSelector}
+                    {formatSelector}
+                  </div>
                   <button className="btn" onClick={generateScript} disabled={isGenerating}>
                     {isGenerating ? <><div className="loader" style={{ width: 18, height: 18, borderWidth: 2 }} /> Generating…</> : '✨ Generate Script'}
                   </button>
@@ -791,10 +1136,16 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
                     {scriptCopied ? '✓ Copied!' : '📋 Copy'}
                   </button>
                   {viewingVersion === null && (
-                    <button className="btn" style={{ background: '#10b981', padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}
-                      onClick={generateHooks} disabled={isGenerating}>
-                      {isGenerating ? 'Generating Hooks...' : '✅ Approve & Generate Hooks'}
-                    </button>
+                    <>
+                      <button className="btn" style={{ background: '#10b981', padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}
+                        onClick={generateHooks} disabled={isGenerating}>
+                        {isGenerating ? 'Generating Hooks...' : '✨ Reel Hooks'}
+                      </button>
+                      <button className="btn" style={{ background: '#8b5cf6', padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}
+                        onClick={generateConsultationHooks} disabled={isGenerating}>
+                        {isGenerating ? 'Generating Docu-Hooks...' : '🎥 Consultation Hooks'}
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -871,6 +1222,23 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
                   <button className="btn btn-secondary" style={{ marginTop: '1rem', fontSize: '0.8rem', padding: '0.4rem 0.8rem' }} onClick={() => updateTopic(topic.id, { selectedHook: null, status: 'script_approved' })}>
                     Undo Selection
                   </button>
+
+                  <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(16,185,129,0.3)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                      <div>
+                        <h4 style={{ margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          🖼️ Step 5: Automated Thumbnail & Production Handoff (Agents 6–12)
+                        </h4>
+                        <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: '#a7f3d0' }}>
+                          Hands off your approved script & hook to Thumbnail Designer, Creative Director, Video Editor & QC Audit.
+                        </p>
+                      </div>
+                      <button className="btn" style={{ background: 'linear-gradient(135deg, #8b5cf6, #10b981)', border: 'none', padding: '0.5rem 1.2rem', fontSize: '0.85rem' }}
+                        onClick={() => { setDetailTab('thumbnail'); runSequentialPipeline(6, 12); }}>
+                        ⚡ Approve Hook & Go to Thumbnail / Production Pack →
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -885,16 +1253,320 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
                       </div>
                     </div>
                   ))}
-                  <div style={{ marginTop: '1rem', textAlign: 'center' }}>
-                    <button className="btn btn-secondary" onClick={generateHooks} disabled={isGenerating}>
-                      {isGenerating ? 'Regenerating...' : '🔄 Generate 6 New Hooks'}
-                    </button>
+                  <div style={{ marginTop: '1.5rem', display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) minmax(300px, 1fr)', gap: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1.5rem' }}>
+                    {/* Option A: Suggestion / Feedback for AI */}
+                    <div style={{ background: 'rgba(139,92,246,0.1)', padding: '1.25rem', borderRadius: '10px', border: '1px solid rgba(139,92,246,0.3)' }}>
+                      <h4 style={{ margin: '0 0 0.5rem 0', color: '#ddd6fe', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem' }}>
+                        <span>🔄 Give Sir's Suggestion / Feedback to AI</span>
+                      </h4>
+                      <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.8rem', color: '#a5b4fc' }}>
+                        Didn't like these hooks? Tell AI what to change (e.g. "Make it punchier, mention glue, ask a question").
+                      </p>
+                      <textarea className="form-control" rows="2" placeholder="Sir's suggestion for new hooks..."
+                        value={hookFeedback} onChange={e => setHookFeedback(e.target.value)}
+                        style={{ marginBottom: '0.75rem', fontSize: '0.85rem' }} />
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button className="btn btn-secondary" style={{ flex: 1, fontSize: '0.8rem', padding: '0.4rem 0.8rem' }} onClick={() => generateHooks()} disabled={isGenerating}>
+                          {isGenerating ? 'Regenerating...' : '✨ Revise Reel Hooks'}
+                        </button>
+                        <button className="btn btn-secondary" style={{ flex: 1, borderColor: '#8b5cf6', color: '#ddd6fe', fontSize: '0.8rem', padding: '0.4rem 0.8rem' }} onClick={() => generateConsultationHooks()} disabled={isGenerating}>
+                          {isGenerating ? 'Regenerating Docu-Hooks...' : '🎥 Revise Docu-Hooks'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Option B: Type Your Own Custom Hook */}
+                    <div style={{ background: 'rgba(16,185,129,0.08)', padding: '1.25rem', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.3)' }}>
+                      <h4 style={{ margin: '0 0 0.5rem 0', color: '#a7f3d0', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem' }}>
+                        <span>✍️ Type Your Own Custom Hook (Manual Override)</span>
+                      </h4>
+                      <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.8rem', color: '#6ee7b7' }}>
+                        Have an exact wording in mind? Type your custom hook below to bypass AI and lock it in directly.
+                      </p>
+                      <textarea className="form-control" rows="2" placeholder="Type your custom hook words here..."
+                        value={customHookText} onChange={e => setCustomHookText(e.target.value)}
+                        style={{ marginBottom: '0.75rem', fontSize: '0.85rem' }} />
+                      <button className="btn" style={{ width: '100%', background: 'linear-gradient(135deg, #10b981, #059669)', fontSize: '0.85rem', padding: '0.5rem' }}
+                        disabled={!customHookText.trim()}
+                        onClick={() => {
+                          updateTopic(topic.id, { selectedHook: `[Custom Hook] ${customHookText.trim()}`, status: 'hooks_ready' });
+                          setCustomHookText('');
+                        }}>
+                        ✓ Save & Approve My Custom Hook →
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
             </div>
           )}
         </>
+      )}
+
+      {/* ── 5. THUMBNAIL & TITLE TAB (AGENTS 7 & 8) ── */}
+      {detailTab === 'thumbnail' && (
+        <div style={{ padding: '1.25rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--panel-border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '1rem' }}>
+            <div>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fff' }}>
+                🖼️ Step 5: CTR Thumbnail & Title Studio (Agents 7 & 8)
+              </h3>
+              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#a5b4fc' }}>
+                Agent 7 formulates the psychological click-through concept; Agent 8 generates the visual Midjourney/DALL-E prompt.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="btn btn-secondary" disabled={isRunningAgent}
+                onClick={() => { runSingleAgent('thumbnail_strategist'); runSingleAgent('thumbnail_designer'); }}>
+                {isRunningAgent ? 'Generating...' : '✨ Generate Thumbnail & Title Specs'}
+              </button>
+              <button className="btn" style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+                onClick={() => setDetailTab('production')}>
+                ✓ Approve Thumbnail & Go to Shot List →
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) minmax(300px, 1fr)', gap: '1.5rem' }}>
+            <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1.25rem', borderRadius: '10px', border: '1px solid rgba(139,92,246,0.3)' }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', color: '#c4b5fd', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span>🎯 Agent 7: Thumbnail Strategist Report</span>
+              </h4>
+              <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: 1.6, color: '#e2e8f0', margin: 0, maxHeight: '400px', overflowY: 'auto' }}>
+                {topic.agentOutputs?.thumbnail_strategist || 'Click "Generate Thumbnail Specs" to run Agent 7 on your approved script.'}
+              </pre>
+            </div>
+
+            <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1.25rem', borderRadius: '10px', border: '1px solid rgba(34,197,94,0.3)' }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', color: '#86efac', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span>🎨 Agent 8: AI Visual Designer Prompt</span>
+              </h4>
+              <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: 1.6, color: '#e2e8f0', margin: 0, maxHeight: '400px', overflowY: 'auto' }}>
+                {topic.agentOutputs?.thumbnail_designer || 'Click "Generate Thumbnail Specs" to run Agent 8 for Midjourney/DALL-E prompts.'}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 6. SHOT LIST & EDIT TAB (AGENTS 6 & 9) ── */}
+      {detailTab === 'production' && (
+        <div style={{ padding: '1.25rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--panel-border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '1rem' }}>
+            <div>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fff' }}>
+                🎬 Step 6: Production Blueprint & Video Editing Rules (Agents 6 & 9)
+              </h3>
+              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#a5b4fc' }}>
+                Agent 6 builds the Director's Shot List & lighting notes; Agent 9 sets jump-cut pacing, zooms, and caption styles.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="btn btn-secondary" disabled={isRunningAgent}
+                onClick={() => { runSingleAgent('creative_director'); runSingleAgent('video_editor'); }}>
+                {isRunningAgent ? 'Generating...' : '✨ Generate Shot List & Edit Guide'}
+              </button>
+              <button className="btn" style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+                onClick={() => setDetailTab('qc_audit')}>
+                ✓ Approve Shot List & Go to QC Audit →
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) minmax(300px, 1fr)', gap: '1.5rem' }}>
+            <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1.25rem', borderRadius: '10px', border: '1px solid rgba(244,114,182,0.3)' }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', color: '#fbcfe8', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span>📷 Agent 6: Creative Director Shot List</span>
+              </h4>
+              <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: 1.6, color: '#e2e8f0', margin: 0, maxHeight: '400px', overflowY: 'auto' }}>
+                {topic.agentOutputs?.creative_director || 'Click "Generate Shot List" to run Agent 6 for B-roll and lighting cues.'}
+              </pre>
+            </div>
+
+            <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1.25rem', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.3)' }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', color: '#bfdbfe', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span>✂️ Agent 9: Video Editor Timeline Rules</span>
+              </h4>
+              <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: 1.6, color: '#e2e8f0', margin: 0, maxHeight: '400px', overflowY: 'auto' }}>
+                {topic.agentOutputs?.video_editor || 'Click "Generate Shot List" to run Agent 9 for zoom frequency and captions.'}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 7. QC & BRAND SCORE TAB (AGENTS 10 & 11) ── */}
+      {detailTab === 'qc_audit' && (
+        <div style={{ padding: '1.25rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--panel-border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '1rem' }}>
+            <div>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fff' }}>
+                🛡️ Step 7: Brand Compliance & 10/10 Quality Control Audit (Agents 10 & 11)
+              </h3>
+              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#a5b4fc' }}>
+                Agent 10 audits medical claims & brand voice; Agent 11 scores retention probability and flags drop-off risks.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="btn btn-secondary" disabled={isRunningAgent}
+                onClick={() => { runSingleAgent('brand_consistency'); runSingleAgent('quality_control'); }}>
+                {isRunningAgent ? 'Auditing...' : '✨ Run Final QC & Brand Audit'}
+              </button>
+              <button className="btn" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}
+                onClick={() => { updateTopic(topic.id, { status: 'ready_to_shoot' }); setDetailTab('analytics'); }}>
+                🏆 Mark Reel as 100% Production Ready! →
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) minmax(300px, 1fr)', gap: '1.5rem' }}>
+            <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1.25rem', borderRadius: '10px', border: '1px solid rgba(245,158,11,0.3)' }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', color: '#fde68a', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span>🛡️ Agent 10: Brand Consistency Compliance</span>
+              </h4>
+              <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: 1.6, color: '#e2e8f0', margin: 0, maxHeight: '400px', overflowY: 'auto' }}>
+                {topic.agentOutputs?.brand_consistency || 'Click "Run Final QC" to check brand voice and clinical positioning.'}
+              </pre>
+            </div>
+
+            <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1.25rem', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.3)' }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', color: '#a7f3d0', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span>✅ Agent 11: 10/10 Quality Score & Drop-off Check</span>
+              </h4>
+              <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: 1.6, color: '#e2e8f0', margin: 0, maxHeight: '400px', overflowY: 'auto' }}>
+                {topic.agentOutputs?.quality_control || 'Click "Run Final QC" to score retention probability out of 10.'}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 8. ANALYTICS PREDICTOR TAB (AGENT 12) ── */}
+      {detailTab === 'analytics' && (
+        <div style={{ padding: '1.25rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--panel-border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '1rem' }}>
+            <div>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fff' }}>
+                📊 Step 8: Performance Predictor & Growth Strategy (Agent 12)
+              </h3>
+              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#a5b4fc' }}>
+                Agent 12 analyzes your final production pack to predict views, engagement hooks, and next-topic spinoffs.
+              </p>
+            </div>
+            <button className="btn btn-secondary" disabled={isRunningAgent}
+              onClick={() => runSingleAgent('analytics')}>
+              {isRunningAgent ? 'Analyzing...' : '✨ Run Performance Predictor'}
+            </button>
+          </div>
+
+          <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1.5rem', borderRadius: '10px', border: '1px solid rgba(139,92,246,0.3)' }}>
+            <h4 style={{ margin: '0 0 0.75rem 0', color: '#ddd6fe' }}>📈 Agent 12: Growth & Viral Loop Predictions</h4>
+            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: 1.6, color: '#e2e8f0', margin: 0, maxHeight: '450px', overflowY: 'auto' }}>
+              {topic.agentOutputs?.analytics || 'Click "Run Performance Predictor" to forecast reach and audience comments.'}
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {/* ── 12-AGENT STUDIO TAB ── */}
+      {detailTab === 'agents' && (
+        <div style={{ marginTop: '0.5rem' }}>
+          <div style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '12px', padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+            <div>
+              <h3 style={{ margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
+                ⚡ End-to-End Short-Form Content System (12 Specialized Agents)
+              </h3>
+              <p style={{ margin: '0.25rem 0 0 0', color: '#ddd6fe', fontSize: '0.85rem' }}>
+                Each agent has a single responsibility and feeds its output directly to the next agent in the chain.
+              </p>
+            </div>
+            <button className="btn" style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1)', border: 'none', padding: '0.6rem 1.25rem', fontWeight: 600, fontSize: '0.9rem' }}
+              onClick={() => runSequentialPipeline(1, 6)} disabled={isRunningPipeline || isRunningAgent}>
+              {isRunningPipeline ? <><div className="loader" style={{ width: 16, height: 16, borderWidth: 2 }} /> Running Automated Chain (1→6)...</> : '⚡ Run Automated Handoff Pipeline (1→6)'}
+            </button>
+          </div>
+
+          {/* Horizontal Agent Chain Navigator */}
+          <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '1rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--panel-border)' }}>
+            {AGENTS_LIST.map((ag, idx) => {
+              const hasOutput = topic.agentOutputs && topic.agentOutputs[ag.key];
+              const isActive = activeAgentIndex === idx;
+              return (
+                <button key={ag.key} onClick={() => setActiveAgentIndex(idx)}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '110px', padding: '0.6rem 0.5rem',
+                    background: isActive ? 'rgba(139,92,246,0.25)' : hasOutput ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${isActive ? '#8b5cf6' : hasOutput ? '#22c55e' : 'var(--panel-border)'}`,
+                    borderRadius: '10px', cursor: 'pointer', transition: 'all 0.2s', position: 'relative'
+                  }}>
+                  <span style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>{ag.icon}</span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: isActive ? 700 : 500, color: isActive ? '#fff' : 'var(--text-muted)', textAlign: 'center', lineHeight: 1.2 }}>
+                    {ag.name.split('. ')[1]}
+                  </span>
+                  {hasOutput && <span style={{ position: 'absolute', top: 4, right: 6, fontSize: '0.7rem' }}>✅</span>}
+                  <span style={{ fontSize: '0.65rem', color: '#a5b4fc', marginTop: '0.2rem' }}>Step {ag.id}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Active Agent Inspector Card */}
+          {(() => {
+            const ag = AGENTS_LIST[activeAgentIndex];
+            const output = topic.agentOutputs ? topic.agentOutputs[ag.key] : '';
+            return (
+              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', borderRadius: '12px', padding: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '1rem' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.3rem', margin: '0 0 0.4rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span>{ag.icon}</span> {ag.name}
+                    </h3>
+                    <p style={{ color: '#a5b4fc', margin: 0, fontWeight: 500, fontSize: '0.95rem' }}>
+                      🎯 Mission: {ag.mission}
+                    </p>
+                  </div>
+                  <button className="btn" onClick={() => runSingleAgent(ag.key)} disabled={isRunningAgent || isRunningPipeline}
+                    style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }}>
+                    {isRunningAgent ? <><div className="loader" style={{ width: 16, height: 16, borderWidth: 2 }} /> Running Agent...</> : `▶️ Run ${ag.name.split('. ')[1]}`}
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 1fr) 2fr', gap: '1.5rem' }}>
+                  {/* Responsibilities list */}
+                  <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      📋 Responsibilities
+                    </h4>
+                    <ul style={{ margin: 0, paddingLeft: '1.2rem', color: '#e2e8f0', fontSize: '0.85rem', lineHeight: 1.7 }}>
+                      {ag.responsibilities.map((r, idx) => (
+                        <li key={idx}>{r}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Agent Output Box */}
+                  <div>
+                    <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>📄 Agent Report & Handoff Data</span>
+                      {output && <span style={{ color: '#22c55e', textTransform: 'none' }}>✨ Ready for Handoff to Step {ag.id < 12 ? ag.id + 1 : 12}</span>}
+                    </h4>
+                    {output ? (
+                      <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', padding: '1.25rem', maxHeight: '500px', overflowY: 'auto', whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: 1.6, color: '#f8fafc' }}>
+                        {output}
+                      </div>
+                    ) : (
+                      <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px dashed var(--panel-border)', borderRadius: '8px', padding: '3rem 1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        <p style={{ fontSize: '2rem', margin: '0 0 0.5rem 0' }}>{ag.icon}</p>
+                        <p style={{ margin: 0 }}>This agent hasn't run on this topic yet.</p>
+                        <p style={{ fontSize: '0.8rem', marginTop: '0.5rem', color: '#888' }}>Click the "▶️ Run" button above or start the automated pipeline chain!</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
       )}
     </div>
   );
@@ -993,18 +1665,33 @@ function StyleGuideView({ guide, onUpdate }) {
 ═══════════════════════════════════════════════ */
 function CreatorPlaybookView({ creatorReferences, setCreatorReferences, activeCreatorId, setActiveCreatorId }) {
   const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [newCreatorName, setNewCreatorName] = useState('');
   const [newCreatorNotes, setNewCreatorNotes] = useState('');
 
   const handleSave = () => {
     if (!newCreatorName.trim() || !newCreatorNotes.trim()) return;
-    setCreatorReferences([
-      ...creatorReferences,
-      { id: Date.now().toString(), name: newCreatorName.trim(), styleNotes: newCreatorNotes.trim() }
-    ]);
+    if (editingId) {
+      setCreatorReferences(creatorReferences.map(c => 
+        c.id === editingId ? { ...c, name: newCreatorName.trim(), styleNotes: newCreatorNotes.trim() } : c
+      ));
+      setEditingId(null);
+    } else {
+      setCreatorReferences([
+        ...creatorReferences,
+        { id: Date.now().toString(), name: newCreatorName.trim(), styleNotes: newCreatorNotes.trim() }
+      ]);
+    }
     setIsAdding(false);
     setNewCreatorName('');
     setNewCreatorNotes('');
+  };
+
+  const handleEdit = (creator) => {
+    setNewCreatorName(creator.name);
+    setNewCreatorNotes(creator.styleNotes);
+    setEditingId(creator.id);
+    setIsAdding(true);
   };
 
   const handleDelete = (id) => {
@@ -1021,7 +1708,7 @@ function CreatorPlaybookView({ creatorReferences, setCreatorReferences, activeCr
           <h2>🎬 Creator Playbook</h2>
           <p className="subtitle">Save techniques and pacing styles from other creators for inspiration.</p>
         </div>
-        <button className="btn" onClick={() => setIsAdding(!isAdding)}>
+        <button className="btn" onClick={() => { setIsAdding(!isAdding); if(isAdding) setEditingId(null); }}>
           {isAdding ? 'Cancel' : '+ Add Creator'}
         </button>
       </div>
@@ -1032,7 +1719,7 @@ function CreatorPlaybookView({ creatorReferences, setCreatorReferences, activeCr
 
       {isAdding && (
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem' }}>Add New Creator Technique</h3>
+          <h3 style={{ marginBottom: '1rem' }}>{editingId ? 'Edit Creator Technique' : 'Add New Creator Technique'}</h3>
           <input
             type="text"
             className="input-field"
@@ -1072,7 +1759,10 @@ function CreatorPlaybookView({ creatorReferences, setCreatorReferences, activeCr
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                   <h3 style={{ fontSize: '1.1rem', margin: 0 }}>{creator.name}</h3>
-                  <button onClick={() => handleDelete(creator.id)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', opacity: 0.7 }}>🗑</button>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button onClick={() => handleEdit(creator)} style={{ background: 'none', border: 'none', color: '#a5b4fc', cursor: 'pointer', opacity: 0.7 }}>✏️</button>
+                    <button onClick={() => handleDelete(creator.id)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', opacity: 0.7 }}>🗑</button>
+                  </div>
                 </div>
                 <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', lineHeight: 1.5, margin: 0, marginBottom: '1rem' }}>
                   {creator.styleNotes}
@@ -1102,18 +1792,33 @@ function CreatorPlaybookView({ creatorReferences, setCreatorReferences, activeCr
 ═══════════════════════════════════════════════ */
 function TargetAudienceView({ targetAudiences, setTargetAudiences, activeAudienceId, setActiveAudienceId }) {
   const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [newName, setNewName] = useState('');
   const [newNotes, setNewNotes] = useState('');
 
   const handleSave = () => {
     if (!newName.trim() || !newNotes.trim()) return;
-    setTargetAudiences([
-      ...targetAudiences,
-      { id: Date.now().toString(), name: newName.trim(), notes: newNotes.trim() }
-    ]);
+    if (editingId) {
+      setTargetAudiences(targetAudiences.map(a => 
+        a.id === editingId ? { ...a, name: newName.trim(), notes: newNotes.trim() } : a
+      ));
+      setEditingId(null);
+    } else {
+      setTargetAudiences([
+        ...targetAudiences,
+        { id: Date.now().toString(), name: newName.trim(), notes: newNotes.trim() }
+      ]);
+    }
     setIsAdding(false);
     setNewName('');
     setNewNotes('');
+  };
+
+  const handleEdit = (audience) => {
+    setNewName(audience.name);
+    setNewNotes(audience.notes);
+    setEditingId(audience.id);
+    setIsAdding(true);
   };
 
   const handleDelete = (id) => {
@@ -1130,7 +1835,7 @@ function TargetAudienceView({ targetAudiences, setTargetAudiences, activeAudienc
           <h2>🎯 Target Audience Groups</h2>
           <p className="subtitle">Define specific buyer personas to instruct the AI's tone and terminology.</p>
         </div>
-        <button className="btn" onClick={() => setIsAdding(!isAdding)}>
+        <button className="btn" onClick={() => { setIsAdding(!isAdding); if(isAdding) setEditingId(null); }}>
           {isAdding ? 'Cancel' : '+ Add Audience'}
         </button>
       </div>
@@ -1141,7 +1846,7 @@ function TargetAudienceView({ targetAudiences, setTargetAudiences, activeAudienc
 
       {isAdding && (
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem' }}>Add New Target Audience</h3>
+          <h3 style={{ marginBottom: '1rem' }}>{editingId ? 'Edit Target Audience' : 'Add New Target Audience'}</h3>
           <input
             type="text"
             className="input-field"
@@ -1181,7 +1886,10 @@ function TargetAudienceView({ targetAudiences, setTargetAudiences, activeAudienc
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                   <h3 style={{ fontSize: '1.1rem', margin: 0 }}>{audience.name}</h3>
-                  <button onClick={() => handleDelete(audience.id)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', opacity: 0.7 }}>🗑</button>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button onClick={() => handleEdit(audience)} style={{ background: 'none', border: 'none', color: '#a5b4fc', cursor: 'pointer', opacity: 0.7 }}>✏️</button>
+                    <button onClick={() => handleDelete(audience.id)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', opacity: 0.7 }}>🗑</button>
+                  </div>
                 </div>
                 <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', lineHeight: 1.5, margin: 0, marginBottom: '1rem' }}>
                   {audience.notes}
@@ -1207,23 +1915,184 @@ function TargetAudienceView({ targetAudiences, setTargetAudiences, activeAudienc
 }
 
 /* ═══════════════════════════════════════════════
+   BRAND VOICES VIEW
+═══════════════════════════════════════════════ */
+function BrandVoicesView({ brandVoices, setBrandVoices, activeBrandVoiceId, setActiveBrandVoiceId }) {
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [newName, setNewName] = useState('');
+  const [newTone, setNewTone] = useState('');
+  const [newRules, setNewRules] = useState('');
+
+  const handleSave = () => {
+    if (!newName.trim() || !newTone.trim() || !newRules.trim()) return;
+    if (editingId) {
+      setBrandVoices(brandVoices.map(b => 
+        b.id === editingId ? { ...b, name: newName.trim(), tone: newTone.trim(), rules: newRules.trim() } : b
+      ));
+      setEditingId(null);
+    } else {
+      setBrandVoices([
+        ...brandVoices,
+        { id: Date.now().toString(), name: newName.trim(), tone: newTone.trim(), rules: newRules.trim() }
+      ]);
+    }
+    setIsAdding(false);
+    setNewName('');
+    setNewTone('');
+    setNewRules('');
+  };
+
+  const handleEdit = (brand) => {
+    setNewName(brand.name);
+    setNewTone(brand.tone);
+    setNewRules(brand.rules);
+    setEditingId(brand.id);
+    setIsAdding(true);
+  };
+
+  const handleDelete = (id) => {
+    if (window.confirm("Delete this brand voice?")) {
+      setBrandVoices(brandVoices.filter(b => b.id !== id));
+      if (activeBrandVoiceId === id) setActiveBrandVoiceId(null);
+    }
+  };
+
+  return (
+    <div className="glass-panel">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h2>👑 Brand Voices & Guidelines</h2>
+          <p className="subtitle">White-label the system by defining exact brand positioning and rules.</p>
+        </div>
+        <button className="btn" onClick={() => { setIsAdding(!isAdding); if(isAdding) setEditingId(null); }}>
+          {isAdding ? 'Cancel' : '+ Add Brand'}
+        </button>
+      </div>
+
+      <div style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '12px', padding: '1.2rem', marginBottom: '1.5rem', fontSize: '0.9rem', color: '#fde68a', lineHeight: 1.6 }}>
+        <strong>How to use this:</strong> Replace hardcoded "American Hairline" logic with dynamic brands. The Script Writer, Brand Consistency Agent, and QC Agent will enforce the tone and rules of the <strong>active</strong> brand for all newly created topics.
+      </div>
+
+      {isAdding && (
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ marginBottom: '1rem' }}>{editingId ? 'Edit Brand Voice' : 'Add New Brand Voice'}</h3>
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              className="input-field"
+              placeholder="Brand Name (e.g., American Hairline)"
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              style={{ flex: 1, minWidth: '200px' }}
+            />
+            <input
+              type="text"
+              className="input-field"
+              placeholder="Core Tone (e.g., Premium clinical positioning)"
+              value={newTone}
+              onChange={e => setNewTone(e.target.value)}
+              style={{ flex: 2, minWidth: '300px' }}
+            />
+          </div>
+          <textarea
+            className="input-field"
+            placeholder="Strict Brand Rules. E.g. 'Must be empathetic, authoritative, and non-salesy. Do not make false medical promises...'"
+            value={newRules}
+            onChange={e => setNewRules(e.target.value)}
+            style={{ minHeight: '120px', resize: 'vertical', marginBottom: '1rem' }}
+          />
+          <button className="btn" onClick={handleSave} disabled={!newName.trim() || !newTone.trim() || !newRules.trim()}>
+            Save Brand Voice
+          </button>
+        </div>
+      )}
+
+      {brandVoices.length === 0 && !isAdding ? (
+        <div style={{ textAlign: 'center', padding: '3rem 1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
+          <p style={{ color: 'var(--text-muted)' }}>No brand voices added yet. Click "+ Add Brand" to start building.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.2rem' }}>
+          {brandVoices.map(brand => {
+            const isActive = activeBrandVoiceId === brand.id;
+            return (
+              <div key={brand.id} style={{ 
+                background: isActive ? 'rgba(251,191,36,0.1)' : 'rgba(255,255,255,0.04)', 
+                border: isActive ? '1px solid #fbbf24' : '1px solid var(--panel-border)', 
+                borderRadius: '10px', padding: '1.2rem',
+                boxShadow: isActive ? '0 0 15px rgba(251,191,36,0.2)' : 'none',
+                display: 'flex', flexDirection: 'column'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                  <h3 style={{ fontSize: '1.1rem', margin: 0 }}>{brand.name}</h3>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button onClick={() => handleEdit(brand)} style={{ background: 'none', border: 'none', color: '#fde68a', cursor: 'pointer', opacity: 0.7 }}>✏️</button>
+                    <button onClick={() => handleDelete(brand.id)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', opacity: 0.7 }}>🗑</button>
+                  </div>
+                </div>
+                <div style={{ marginBottom: '1rem' }}>
+                  <span style={{ fontSize: '0.75rem', background: 'rgba(251,191,36,0.15)', color: '#fde68a', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid rgba(251,191,36,0.3)' }}>
+                    Tone: {brand.tone}
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', lineHeight: 1.5, margin: 0, marginBottom: '1rem' }}>
+                  {brand.rules}
+                </p>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto' }}>
+                  {isActive ? (
+                    <button className="btn" style={{ flex: 1, background: 'rgba(251,191,36,0.2)', border: '1px solid #fbbf24', color: '#fde68a' }} onClick={() => setActiveBrandVoiceId(null)}>
+                      👑 Default Brand (Click to unset)
+                    </button>
+                  ) : (
+                    <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setActiveBrandVoiceId(brand.id)}>
+                      Set as Default
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
    HOOK LIBRARY VIEW
 ═══════════════════════════════════════════════ */
 function HookLibraryView({ hookLibrary, setHookLibrary }) {
   const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [newType, setNewType] = useState('Visual');
   const [newName, setNewName] = useState('');
   const [newNotes, setNewNotes] = useState('');
 
   const handleSave = () => {
     if (!newName.trim() || !newNotes.trim()) return;
-    setHookLibrary([
-      ...hookLibrary,
-      { id: Date.now().toString(), type: newType, name: newName.trim(), notes: newNotes.trim() }
-    ]);
+    if (editingId) {
+      setHookLibrary(hookLibrary.map(h => 
+        h.id === editingId ? { ...h, type: newType, name: newName.trim(), notes: newNotes.trim() } : h
+      ));
+      setEditingId(null);
+    } else {
+      setHookLibrary([
+        ...hookLibrary,
+        { id: Date.now().toString(), type: newType, name: newName.trim(), notes: newNotes.trim() }
+      ]);
+    }
     setIsAdding(false);
     setNewName('');
     setNewNotes('');
+  };
+
+  const handleEdit = (hook) => {
+    setNewType(hook.type);
+    setNewName(hook.name);
+    setNewNotes(hook.notes);
+    setEditingId(hook.id);
+    setIsAdding(true);
   };
 
   const handleDelete = (id) => {
@@ -1239,7 +2108,7 @@ function HookLibraryView({ hookLibrary, setHookLibrary }) {
           <h2>🪝 Hook Library</h2>
           <p className="subtitle">Build a knowledge base of proven visual, action, and text hooks.</p>
         </div>
-        <button className="btn" onClick={() => setIsAdding(!isAdding)}>
+        <button className="btn" onClick={() => { setIsAdding(!isAdding); if(isAdding) setEditingId(null); }}>
           {isAdding ? 'Cancel' : '+ Add Hook Template'}
         </button>
       </div>
@@ -1250,7 +2119,7 @@ function HookLibraryView({ hookLibrary, setHookLibrary }) {
 
       {isAdding && (
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem' }}>Add New Hook Template</h3>
+          <h3 style={{ marginBottom: '1rem' }}>{editingId ? 'Edit Hook Template' : 'Add New Hook Template'}</h3>
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
             <select className="input-field" style={{ flex: '0 0 150px' }} value={newType} onChange={e => setNewType(e.target.value)}>
               <option value="Visual">Visual Hook</option>
@@ -1302,13 +2171,270 @@ function HookLibraryView({ hookLibrary, setHookLibrary }) {
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.5, flex: 1, whiteSpace: 'pre-wrap' }}>
                 {hook.notes}
               </p>
-              <div style={{ marginTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1rem', textAlign: 'right' }}>
+              <div style={{ marginTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <button onClick={() => handleEdit(hook)} style={{ background: 'none', border: 'none', color: '#fbcfe8', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  Edit
+                </button>
                 <button onClick={() => handleDelete(hook.id)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '0.85rem' }}>
                   Delete
                 </button>
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   THUMBNAIL STYLES VIEW
+═══════════════════════════════════════════════ */
+function ThumbnailStylesView({ thumbnailStyles, setThumbnailStyles, activeThumbnailStyleId, setActiveThumbnailStyleId }) {
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [newName, setNewName] = useState('');
+  const [newRules, setNewRules] = useState('');
+
+  const handleSave = () => {
+    if (!newName.trim() || !newRules.trim()) return;
+    if (editingId) {
+      setThumbnailStyles(thumbnailStyles.map(b => 
+        b.id === editingId ? { ...b, name: newName.trim(), rules: newRules.trim() } : b
+      ));
+      setEditingId(null);
+    } else {
+      setThumbnailStyles([
+        ...thumbnailStyles,
+        { id: Date.now().toString(), name: newName.trim(), rules: newRules.trim() }
+      ]);
+    }
+    setIsAdding(false);
+    setNewName('');
+    setNewRules('');
+  };
+
+  const handleEdit = (style) => {
+    setNewName(style.name);
+    setNewRules(style.rules);
+    setEditingId(style.id);
+    setIsAdding(true);
+  };
+
+  const handleDelete = (id) => {
+    if (window.confirm("Delete this thumbnail style?")) {
+      setThumbnailStyles(thumbnailStyles.filter(b => b.id !== id));
+      if (activeThumbnailStyleId === id) setActiveThumbnailStyleId(null);
+    }
+  };
+
+  return (
+    <div className="glass-panel">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h2>🖼️ Thumbnail Styles</h2>
+          <p className="subtitle">Define the exact rules and psychology for the Thumbnail Strategist & Designer agents.</p>
+        </div>
+        <button className="btn" onClick={() => { setIsAdding(!isAdding); if(isAdding) setEditingId(null); }}>
+          {isAdding ? 'Cancel' : '+ Add Thumbnail Style'}
+        </button>
+      </div>
+
+      <div style={{ background: 'rgba(236,72,153,0.1)', border: '1px solid rgba(236,72,153,0.3)', borderRadius: '12px', padding: '1.2rem', marginBottom: '1.5rem', fontSize: '0.9rem', color: '#fbcfe8', lineHeight: 1.6 }}>
+        <strong>How to use this:</strong> Provide exact rules for visual concept, face zooming, contrast, and text overlays. The active style is strictly enforced by Agent 7 & Agent 8.
+      </div>
+
+      {isAdding && (
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ marginBottom: '1rem' }}>{editingId ? 'Edit Thumbnail Style' : 'Add New Thumbnail Style'}</h3>
+          <input
+            type="text"
+            className="input-field"
+            placeholder="Style Name (e.g., Aggressive Clickbait, Minimal Premium)"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            style={{ marginBottom: '1rem' }}
+          />
+          <textarea
+            className="input-field"
+            placeholder="Thumbnail Rules. E.g. '1. Big Bold Text Overlay (3-4 words max)\n2. Emotion to Trigger (curiosity, shock)\n3. Frame selection guidelines...'"
+            value={newRules}
+            onChange={e => setNewRules(e.target.value)}
+            style={{ minHeight: '120px', resize: 'vertical', marginBottom: '1rem' }}
+          />
+          <button className="btn" onClick={handleSave} disabled={!newName.trim() || !newRules.trim()}>
+            Save Thumbnail Style
+          </button>
+        </div>
+      )}
+
+      {thumbnailStyles.length === 0 && !isAdding ? (
+        <div style={{ textAlign: 'center', padding: '3rem 1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
+          <p style={{ color: 'var(--text-muted)' }}>No thumbnail styles added yet. Click "+ Add Thumbnail Style" to start building.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.2rem' }}>
+          {thumbnailStyles.map(style => {
+            const isActive = activeThumbnailStyleId === style.id;
+            return (
+              <div key={style.id} style={{ 
+                background: isActive ? 'rgba(236,72,153,0.1)' : 'rgba(255,255,255,0.04)', 
+                border: isActive ? '1px solid #ec4899' : '1px solid var(--panel-border)', 
+                borderRadius: '10px', padding: '1.2rem',
+                boxShadow: isActive ? '0 0 15px rgba(236,72,153,0.2)' : 'none',
+                display: 'flex', flexDirection: 'column'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                  <h3 style={{ fontSize: '1.1rem', margin: 0 }}>{style.name}</h3>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button onClick={() => handleEdit(style)} style={{ background: 'none', border: 'none', color: '#fbcfe8', cursor: 'pointer', opacity: 0.7 }}>✏️</button>
+                    <button onClick={() => handleDelete(style.id)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', opacity: 0.7 }}>🗑</button>
+                  </div>
+                </div>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', lineHeight: 1.5, margin: 0, marginBottom: '1rem' }}>
+                  {style.rules}
+                </p>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto' }}>
+                  {isActive ? (
+                    <button className="btn" style={{ flex: 1, background: 'rgba(236,72,153,0.2)', border: '1px solid #ec4899', color: '#fbcfe8' }} onClick={() => setActiveThumbnailStyleId(null)}>
+                      🖼️ Default Style (Click to unset)
+                    </button>
+                  ) : (
+                    <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setActiveThumbnailStyleId(style.id)}>
+                      Set as Default
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   EDITING STYLES VIEW
+═══════════════════════════════════════════════ */
+function EditingStylesView({ editingStyles, setEditingStyles, activeEditingStyleId, setActiveEditingStyleId }) {
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [newName, setNewName] = useState('');
+  const [newRules, setNewRules] = useState('');
+
+  const handleSave = () => {
+    if (!newName.trim() || !newRules.trim()) return;
+    if (editingId) {
+      setEditingStyles(editingStyles.map(b => 
+        b.id === editingId ? { ...b, name: newName.trim(), rules: newRules.trim() } : b
+      ));
+      setEditingId(null);
+    } else {
+      setEditingStyles([
+        ...editingStyles,
+        { id: Date.now().toString(), name: newName.trim(), rules: newRules.trim() }
+      ]);
+    }
+    setIsAdding(false);
+    setNewName('');
+    setNewRules('');
+  };
+
+  const handleEdit = (style) => {
+    setNewName(style.name);
+    setNewRules(style.rules);
+    setEditingId(style.id);
+    setIsAdding(true);
+  };
+
+  const handleDelete = (id) => {
+    if (window.confirm("Delete this editing style?")) {
+      setEditingStyles(editingStyles.filter(b => b.id !== id));
+      if (activeEditingStyleId === id) setActiveEditingStyleId(null);
+    }
+  };
+
+  return (
+    <div className="glass-panel">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h2>✂️ Editing Styles</h2>
+          <p className="subtitle">Control the pacing, cuts, and retention strategies for the Video Editor Agent.</p>
+        </div>
+        <button className="btn" onClick={() => { setIsAdding(!isAdding); if(isAdding) setEditingId(null); }}>
+          {isAdding ? 'Cancel' : '+ Add Editing Style'}
+        </button>
+      </div>
+
+      <div style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)', borderRadius: '12px', padding: '1.2rem', marginBottom: '1.5rem', fontSize: '0.9rem', color: '#bae6fd', lineHeight: 1.6 }}>
+        <strong>How to use this:</strong> Define pacing, sound effects, B-roll rules, and caption styles. The active style is strictly enforced by Agent 9 (Video Editor).
+      </div>
+
+      {isAdding && (
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ marginBottom: '1rem' }}>{editingId ? 'Edit Editing Style' : 'Add New Editing Style'}</h3>
+          <input
+            type="text"
+            className="input-field"
+            placeholder="Style Name (e.g., High-Retention Short, Cinematic Doc)"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            style={{ marginBottom: '1rem' }}
+          />
+          <textarea
+            className="input-field"
+            placeholder="Editing Rules. E.g. '1. Pacing & Cut Rules (remove all dead air, jump cuts every 2.5-3s)\n2. SFX (subtle whooshes)\n3. Zoom on keywords...'"
+            value={newRules}
+            onChange={e => setNewRules(e.target.value)}
+            style={{ minHeight: '120px', resize: 'vertical', marginBottom: '1rem' }}
+          />
+          <button className="btn" onClick={handleSave} disabled={!newName.trim() || !newRules.trim()}>
+            Save Editing Style
+          </button>
+        </div>
+      )}
+
+      {editingStyles.length === 0 && !isAdding ? (
+        <div style={{ textAlign: 'center', padding: '3rem 1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
+          <p style={{ color: 'var(--text-muted)' }}>No editing styles added yet. Click "+ Add Editing Style" to start building.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.2rem' }}>
+          {editingStyles.map(style => {
+            const isActive = activeEditingStyleId === style.id;
+            return (
+              <div key={style.id} style={{ 
+                background: isActive ? 'rgba(14,165,233,0.1)' : 'rgba(255,255,255,0.04)', 
+                border: isActive ? '1px solid #0ea5e9' : '1px solid var(--panel-border)', 
+                borderRadius: '10px', padding: '1.2rem',
+                boxShadow: isActive ? '0 0 15px rgba(14,165,233,0.2)' : 'none',
+                display: 'flex', flexDirection: 'column'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                  <h3 style={{ fontSize: '1.1rem', margin: 0 }}>{style.name}</h3>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button onClick={() => handleEdit(style)} style={{ background: 'none', border: 'none', color: '#bae6fd', cursor: 'pointer', opacity: 0.7 }}>✏️</button>
+                    <button onClick={() => handleDelete(style.id)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', opacity: 0.7 }}>🗑</button>
+                  </div>
+                </div>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', lineHeight: 1.5, margin: 0, marginBottom: '1rem' }}>
+                  {style.rules}
+                </p>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto' }}>
+                  {isActive ? (
+                    <button className="btn" style={{ flex: 1, background: 'rgba(14,165,233,0.2)', border: '1px solid #0ea5e9', color: '#bae6fd' }} onClick={() => setActiveEditingStyleId(null)}>
+                      ✂️ Default Style (Click to unset)
+                    </button>
+                  ) : (
+                    <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setActiveEditingStyleId(style.id)}>
+                      Set as Default
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

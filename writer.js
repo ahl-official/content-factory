@@ -4,6 +4,7 @@ const OpenAI = require('openai');
 const config = require('./config');
 const logger = require('./logger');
 const { SYSTEM_PROMPT, AUDIT_PROMPT, FEW_SHOTS } = require('./scriptDna');
+const { CONSULTATION_SCRIPT_SYSTEM_PROMPT, CONSULTATION_SCRIPT_AUDIT_PROMPT } = require('./consultationHookDna');
 
 const openai = new OpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
@@ -18,24 +19,30 @@ const openai = new OpenAI({
  * Mirrors Vinitt's own workflow ("never one-shot — audit, make it 10/10").
  * Single-pass would routinely ship 6-7/10 drafts.
  */
-async function writeNewScript({ brief }) {
+async function writeNewScript({ brief, formatMode = 'reel', brandVoice = null }) {
   const briefMessage = { role: 'user', content: formatBrief(brief) };
+  const initialShots = formatMode === 'consultation' ? [] : FEW_SHOTS;
+  const auditPrompt = formatMode === 'consultation' ? CONSULTATION_SCRIPT_AUDIT_PROMPT : AUDIT_PROMPT;
 
   // Pass 1: draft.
   const draft = await runWriter({
-    messages: [...FEW_SHOTS, briefMessage],
+    messages: [...initialShots, briefMessage],
     mode: 'new-draft',
+    formatMode,
+    brandVoice,
   });
 
   // Pass 2: audit + rewrite.
   const final = await runWriter({
     messages: [
-      ...FEW_SHOTS,
+      ...initialShots,
       briefMessage,
       { role: 'assistant', content: draft },
-      { role: 'user', content: AUDIT_PROMPT },
+      { role: 'user', content: auditPrompt },
     ],
     mode: 'new-audit',
+    formatMode,
+    brandVoice,
   });
 
   return final;
@@ -45,30 +52,42 @@ async function writeNewScript({ brief }) {
  * Edits are single-pass. The user is iterating — auto-audit would
  * override their direction.
  */
-async function editScript({ historyTurns, instruction }) {
+async function editScript({ historyTurns, instruction, formatMode = 'reel', brandVoice = null }) {
   const realTurns = historyTurns
     .filter((m) => m.role === 'user' || m.role === 'assistant')
     .map((m) => ({
       role: m.role,
       content: m.role === 'user' ? formatBrief(m.content) : m.content,
     }));
+  const initialShots = formatMode === 'consultation' ? [] : FEW_SHOTS;
 
   const messages = [
-    ...FEW_SHOTS,
+    ...initialShots,
     ...realTurns,
     { role: 'user', content: formatEditInstruction(instruction) },
   ];
-  return runWriter({ messages, mode: 'edit' });
+  return runWriter({ messages, mode: 'edit', formatMode, brandVoice });
 }
 
-async function runWriter({ messages, mode }) {
+async function runWriter({ messages, mode, formatMode = 'reel', brandVoice = null }) {
   const t0 = Date.now();
+  let sysPrompt = formatMode === 'consultation' ? CONSULTATION_SCRIPT_SYSTEM_PROMPT : SYSTEM_PROMPT;
+
+  // Dynamically replace hardcoded AHL with brandVoice name if provided
+  if (brandVoice) {
+    sysPrompt = sysPrompt.replace(/American Hairline \(AHL\)/g, brandVoice.name);
+    sysPrompt = sysPrompt.replace(/American Hairline/g, brandVoice.name);
+    sysPrompt = sysPrompt.replace(/AHL/g, brandVoice.name);
+    
+    // Also append the brand rules at the end of the system prompt
+    sysPrompt += `\n\n# BRAND IDENTITY & RULES (MANDATORY)\nName: ${brandVoice.name}\nTone: ${brandVoice.tone}\nRules: ${brandVoice.rules}\n`;
+  }
   const resp = await openai.chat.completions.create({
     model: config.WRITER_MODEL,
     max_tokens: 4096,
     temperature: mode === 'new-audit' ? 0.5 : 0.7,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: sysPrompt },
       ...messages,
     ],
   });

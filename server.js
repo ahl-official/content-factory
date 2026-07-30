@@ -6,6 +6,8 @@ const multer = require('multer');
 const { transcribe } = require('./transcription');
 const { writeNewScript, editScript } = require('./writer');
 const { SYSTEM_PROMPT } = require('./scriptDna');
+const { CONSULTATION_HOOK_PROMPT } = require('./consultationHookDna');
+const { AGENTS_CONFIG, runAgent, runPipeline } = require('./agentsSystem');
 const config = require('./config');
 const logger = require('./logger');
 const { OpenAI } = require('openai');
@@ -97,22 +99,61 @@ app.post('/api/db/save', async (req, res) => {
 
 app.get('/healthz', (_req, res) => res.status(200).json({ ok: true }));
 
-// ─── Generate Angles for a Topic ───────────────────────────────────────────────
-app.post('/api/angles', async (req, res) => {
+// ─── Get 12-Agent System Configuration ────────────────────────────────────────
+app.get('/api/agents', (req, res) => {
+  res.json({ agents: AGENTS_CONFIG });
+});
+
+// ─── Run a Single Specialized Agent ───────────────────────────────────────────
+app.post('/api/agents/run', async (req, res) => {
   try {
-    const { topic, targetAudience } = req.body;
+    const { agentKey, topic, inputData, sirStyleGuide, targetAudience, brandVoice, thumbnailStyle, editingStyle } = req.body;
+    if (!agentKey || !topic) return res.status(400).json({ error: 'agentKey and topic are required' });
+
+    const result = await runAgent({ agentKey, topic, inputData, sirStyleGuide, targetAudience, brandVoice, thumbnailStyle, editingStyle });
+    res.json(result);
+  } catch (err) {
+    logger.error({ err: err.message }, 'agent run error');
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Run Multi-Agent Pipeline Sequential Handoff ──────────────────────────────
+app.post('/api/agents/pipeline', async (req, res) => {
+  try {
+    const { topic, startAgentId = 1, endAgentId = 5, initialData, sirStyleGuide, targetAudience, brandVoice, thumbnailStyle, editingStyle } = req.body;
     if (!topic) return res.status(400).json({ error: 'topic is required' });
 
-    let prompt = `You are an elite content strategist for American Hairline (AHL).
+    const results = await runPipeline({ topic, startAgentId, endAgentId, initialData, sirStyleGuide, targetAudience, brandVoice, thumbnailStyle, editingStyle });
+    res.json({ results });
+  } catch (err) {
+    logger.error({ err: err.message }, 'agent pipeline error');
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Generate Angles for a Topic (Agent 2: Content Angle Generator) ───────────
+app.post('/api/angles', async (req, res) => {
+  try {
+    const { topic, targetAudience, brandVoice } = req.body;
+    if (!topic) return res.status(400).json({ error: 'topic is required' });
+
+    const brandName = brandVoice?.name || 'American Hairline (AHL)';
+    let prompt = `You are Agent 2 (Content Angle Generator Agent) for ${brandName}.
 The writer has selected the following topic for an Instagram Reel:
 "${topic}"
 
-Generate exactly 5 distinct, high-engagement angles/hooks for this topic.
+Your mission is to generate unique, high-performing content angles across Sir's 19 core formats:
+Myths, Mistakes, Comparisons, Reactions, Consultations, Celebrity examples, Case studies, Experiments, POVs, Storytelling, FAQs, Objections, Cost breakdowns, Emotional stories, Beginner mistakes, Behind the scenes, Before vs After, Day-in-the-life, Do's & Don'ts.
+
 ${targetAudience ? `IMPORTANT: Tailor these angles specifically for this target audience: ${targetAudience}` : ''}
 
-Each angle should be 1-2 sentences summarizing the approach (e.g. "The Myth Buster: Start by debunking...").
+Generate exactly 5 distinct, high-impact content angles across different formats in the list above.
+Each angle should be formatted as: "[Format Name] 1-2 sentence angle or approach description"
+Example: "[The Myth Buster] Debunking the lie that clip-on patches damage natural hair follicles."
+
 Return ONLY a valid JSON array of 5 strings. No markdown, no extra text.
-["angle 1", "angle 2", "angle 3", "angle 4", "angle 5"]`;
+["[Format 1] description...", "[Format 2] description...", "[Format 3] description...", "[Format 4] description...", "[Format 5] description..."]`;
 
     const resp = await openai.chat.completions.create({
       model: config.INTENT_MODEL,
@@ -136,23 +177,72 @@ Return ONLY a valid JSON array of 5 strings. No markdown, no extra text.
     res.status(500).json({ error: err.message });
   }
 });
+// ─── Generate Ideas from Reference Video Transcription ──────────────────────────
+app.post('/api/ideas/from-video', async (req, res) => {
+  try {
+    const { transcript } = req.body;
+    if (!transcript) return res.status(400).json({ error: 'transcript is required' });
+
+    let prompt = `You are an elite content strategist for American Hairline.
+Sir has asked you to analyze the following transcription of a viral short-form video (Reel/TikTok) and extract its core structure, hook type, and pacing.
+
+--- TRANSCRIPTION START ---
+${transcript}
+--- TRANSCRIPTION END ---
+
+Your mission:
+1. Identify why this video went viral (its format, hook, and emotional trigger).
+2. Generate 5 specific, high-converting video ideas for American Hairline using this exact same structural format.
+3. Make sure the ideas apply directly to American Hairline's niche (premium hair restoration, hair patches, confidence, transformations).
+
+Return ONLY a valid JSON array of 5 strings. Each string should be the idea itself, briefly explaining the hook and the concept.
+Example: ["[The Viral Hook Structure] idea description...", ...]`;
+
+    const resp = await openai.chat.completions.create({
+      model: config.INTENT_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.8,
+    });
+
+    let text = (resp.choices[0]?.message?.content || '[]').trim();
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+
+    let ideas = [];
+    try {
+      ideas = JSON.parse(text);
+    } catch (e) {
+      ideas = text.split('\n').map(l => l.replace(/^\d+[\.\)]\s*/, '').trim()).filter(l => l.length > 5);
+    }
+
+    res.json({ ideas: ideas.slice(0, 5) });
+  } catch (err) {
+    logger.error({ err: err.message }, 'ideas from video error');
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ─── Generate Hooks for a Script ───────────────────────────────────────────────
 app.post('/api/hooks', async (req, res) => {
   try {
-    const { script, hookLibrary } = req.body;
+    const { script, hookLibrary, feedback } = req.body;
     if (!script) return res.status(400).json({ error: 'script is required' });
 
     const libraryText = hookLibrary && hookLibrary.length > 0
       ? `Use these specific hook templates from our Hook Library:\n${hookLibrary.map(h => `- [${h.type}] ${h.name}: ${h.notes}`).join('\n')}`
       : 'Draw inspiration for Visual, Action, and Text hooks based on standard viral content strategies.';
 
-    let prompt = `You are an elite content strategist for American Hairline (AHL).
+    const feedbackText = feedback
+      ? `\n\nCRITICAL USER / SIR FEEDBACK FOR REGENERATION:\nSir reviewed the previous hooks and said: "${feedback}". You MUST incorporate this instruction and create new hooks that satisfy this feedback!`
+      : '';
+
+    const brandName = req.body.brandVoice?.name || 'American Hairline (AHL)';
+    let prompt = `You are an elite content strategist for ${brandName}.
 The writer has finalized the following script for an Instagram Reel:
 
 --- SCRIPT START ---
 ${script}
---- SCRIPT END ---
+--- SCRIPT END ---${feedbackText}
 
 Your job is to generate exactly 6 varied hook options for the very beginning of this script. 
 You MUST provide exactly this breakdown:
@@ -161,10 +251,20 @@ You MUST provide exactly this breakdown:
 - 1 Action Hook (A specific action or movement)
 - 1 Text-on-Screen Hook (A compelling text overlay)
 
+# MANDATORY SURGICAL HOOK RULES:
+1. THE 3-STEP SNAPBACK FORMULA (For Verbal Hooks):
+   - Sentence 1 (Lean-In): Establish MOFU/BOFU topic clarity immediately + an undeniable observation/fact.
+   - Sentence 2 (Stun Gun): Halt scrolling momentum using a contrast conjunction ("Lekin", "But", "However", "Sach yeh hai ki...").
+   - Sentence 3 (Contrarian Snapback): Deliver the knockout haymaker sentence that reverses expectation under 4 seconds.
+2. STACCATO DELIVERY: All spoken sentences MUST be max 5 to 7 words each. No long, rambling sentences (avoid rhythmic monotony).
+3. SPEED-TO-VALUE & VISUAL TENSION (For Visual, Action & Text Hooks):
+   - The core payoff or visual reveal must hit within the first 4 seconds.
+   - Bold text overlays (3-5 words max) must create visual tension with spoken words (never read the text overlay aloud).
+
 ${libraryText}
 
 Return ONLY a valid JSON array of 6 strings. No markdown, no extra text.
-Each string should briefly describe the hook category, action, and what is said/shown (e.g. "[Visual Hook] User applies the patch while saying 'I wish I knew this sooner...'").
+Each string should briefly describe the hook category, action, and what is said/shown (e.g. "[Verbal Hook] (Lean-in ➔ Stun Gun ➔ Snapback) 'Lokhandwala patches look awesome. Lekin sach ek secret hai. Teesre hafte scalp suffocate hoga.'").
 ["hook 1", "hook 2", "hook 3", "hook 4", "hook 5", "hook 6"]`;
 
     const resp = await openai.chat.completions.create({
@@ -190,15 +290,51 @@ Each string should briefly describe the hook category, action, and what is said/
   }
 });
 
-// ─── Generate 10 daily ideas ─────────────────────────────────────────────────
+// ─── Generate Consultation Video Hooks ─────────────────────────────────────────
+app.post('/api/consultation-hooks', async (req, res) => {
+  try {
+    const { script, topic, feedback } = req.body;
+    const brief = script || topic || 'General consultation video';
+
+    const feedbackText = feedback
+      ? `\n\nCRITICAL USER / SIR FEEDBACK FOR REGENERATION:\nSir reviewed the previous consultation hooks and said: "${feedback}". You MUST incorporate this instruction and adjust the consultation hooks!`
+      : '';
+
+    let prompt = `${CONSULTATION_HOOK_PROMPT}\n\nVIDEO BRIEF / SCRIPT CONTEXT:\n${brief}${feedbackText}`;
+
+    const resp = await openai.chat.completions.create({
+      model: config.INTENT_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.85,
+    });
+
+    let text = (resp.choices[0]?.message?.content || '[]').trim();
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+
+    let hooks = [];
+    try {
+      hooks = JSON.parse(text);
+    } catch (e) {
+      hooks = text.split('\n').map(l => l.replace(/^\d+[\.\)]\s*/, '').trim()).filter(l => l.length > 5);
+    }
+
+    res.json({ hooks: hooks.slice(0, 6) });
+  } catch (err) {
+    logger.error({ err: err.message }, 'consultation hooks error');
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Generate 10 daily ideas (Agent 1: Research Agent) ─────────────────────────
 app.post('/api/ideas', async (req, res) => {
   try {
-    const prompt = `You are an elite content strategist for American Hairline (AHL), a premium hair replacement clinic in India.
+    const prompt = `You are Agent 1 (Research Agent) for American Hairline (AHL), India's premier non-surgical hair replacement clinic.
+Your mission is to discover high-value content opportunities by analyzing competitor gaps, audience pain points (social stigma, fear of surgery, glue maintenance, cost, natural look), FAQs, and comment psychology.
 
-Generate exactly 10 highly engaging, controversial, or educational short-form video (Instagram Reel) topic ideas. Target people who are actively considering a hair transplant or a hair system (clip-on, permanent extensions, wig) — NOT general audiences.
+Generate exactly 10 highly engaging, validated short-form video (Instagram Reel) topic opportunities targeting people who are actively considering a hair transplant or a non-surgical hair patch (clip-on, permanent extensions, skin base).
 
 Return ONLY a valid JSON array of 10 strings. No markdown, no extra text, no numbers:
-["idea 1", "idea 2", "idea 3", "idea 4", "idea 5", "idea 6", "idea 7", "idea 8", "idea 9", "idea 10"]`;
+["opportunity 1", "opportunity 2", "opportunity 3", "opportunity 4", "opportunity 5", "opportunity 6", "opportunity 7", "opportunity 8", "opportunity 9", "opportunity 10"]`;
 
     const resp = await openai.chat.completions.create({
       model: config.INTENT_MODEL,
@@ -279,7 +415,7 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
 // ─── Generate final script ────────────────────────────────────────────────────
 app.post('/api/generate', async (req, res) => {
   try {
-    const { topic, context, transcript, sirStyleGuide, creatorInspiration, targetAudience } = req.body;
+    const { topic, context, transcript, sirStyleGuide, creatorInspiration, targetAudience, formatMode = 'reel', brandVoice } = req.body;
     if (!topic) return res.status(400).json({ error: 'topic required' });
 
     let brief = `TOPIC: ${topic}\n`;
@@ -289,7 +425,7 @@ app.post('/api/generate', async (req, res) => {
     if (context) brief += `CONTEXT FROM CONTENT TEAM DISCUSSION:\n${context}\n\n`;
     if (transcript) brief += `RAW VOICE-NOTE FROM VINITT (Sir's direction):\n"""\n${transcript}\n"""`;
 
-    const script = await writeNewScript({ brief });
+    const script = await writeNewScript({ brief, formatMode, brandVoice });
     res.json({ script });
   } catch (err) {
     logger.error({ err: err.message }, 'generate error');
@@ -374,7 +510,7 @@ Return ONLY this JSON (no markdown):
 // Uses the existing editScript() single-pass writer — best for iterations.
 app.post('/api/revise', async (req, res) => {
   try {
-    const { currentScript, sirFeedback, previousRevisions, sirStyleGuide, creatorInspiration, targetAudience } = req.body;
+    const { currentScript, sirFeedback, previousRevisions, sirStyleGuide, creatorInspiration, targetAudience, formatMode = 'reel' } = req.body;
     if (!currentScript) return res.status(400).json({ error: 'currentScript required' });
     if (!sirFeedback)   return res.status(400).json({ error: 'sirFeedback required' });
 
@@ -395,7 +531,7 @@ app.post('/api/revise', async (req, res) => {
     
     const instruction = instructionParts.join('\n\n');
 
-    const revised = await editScript({ historyTurns, instruction });
+    const revised = await editScript({ historyTurns, instruction, formatMode });
     res.json({ script: revised });
   } catch (err) {
     logger.error({ err: err.message }, 'revise error');
