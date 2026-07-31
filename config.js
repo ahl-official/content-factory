@@ -23,4 +23,14 @@ if (!parsed.success) {
   console.error('Invalid environment configuration:', parsed.error.format());
 }
 
-module.exports = parsed.data;
+module.exports = parsed.success ? parsed.data : {
+  PORT: 3000,
+  NODE_ENV: process.env.NODE_ENV || 'production',
+  LOG_LEVEL: 'info',
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
+  OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || '',
+  WRITER_MODEL: 'openai/gpt-4o',
+  INTENT_MODEL: 'openai/gpt-4o-mini',
+  SESSION_TTL_HOURS: 12,
+  SESSION_WINDOW_SIZE: 20,
+};
