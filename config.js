@@ -8,8 +8,8 @@ const schema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('production'),
   LOG_LEVEL: z.string().default('info'),
 
-  OPENAI_API_KEY: z.string().min(1),
-  OPENROUTER_API_KEY: z.string().min(1),
+  OPENAI_API_KEY: z.string().default(''),
+  OPENROUTER_API_KEY: z.string().default(''),
 
   WRITER_MODEL: z.string().default('openai/gpt-4o'),
   INTENT_MODEL: z.string().default('openai/gpt-4o-mini'),
@@ -20,9 +20,7 @@ const schema = z.object({
 
 const parsed = schema.safeParse(process.env);
 if (!parsed.success) {
-  // eslint-disable-next-line no-console
   console.error('Invalid environment configuration:', parsed.error.format());
-  process.exit(1);
 }
 
 module.exports = parsed.data;
