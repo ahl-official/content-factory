@@ -41,12 +41,7 @@ async function initSheet() {
     });
     doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, serviceAccountAuth);
     await doc.loadInfo();
-    let sheet = doc.sheetsByIndex[0];
-    if (!sheet) {
-      sheet = await doc.addSheet({ title: 'Database', headerValues: ['Key', 'Data'] });
-    } else {
-      try { await sheet.setHeaderRow(['Key', 'Data']); } catch(e) {}
-    }
+    // We will dynamically manage sheets in load/save
     logger.info("Connected to Google Sheets Database");
   } catch (e) {
     logger.error({ err: e }, "Failed to init Google Sheets Database");
@@ -58,18 +53,33 @@ initSheet();
 app.get('/api/db/load', async (req, res) => {
   if (!doc) return res.json({ topics: [], targetAudiences: [], creatorReferences: [], sirStyleGuide: '', activeCreatorId: null, activeAudienceId: null, hookLibrary: [] });
   try {
-    const sheet = doc.sheetsByIndex[0];
-    const rows = await sheet.getRows();
+    await doc.loadInfo();
     const data = {};
-    rows.forEach(r => {
-      try {
-        data[r.get('Key')] = JSON.parse(r.get('Data'));
-      } catch (e) {
-        data[r.get('Key')] = r.get('Data');
+    for (const sheet of doc.sheetsByIndex) {
+      const rows = await sheet.getRows();
+      if (sheet.title === 'Settings') {
+        rows.forEach(r => {
+          try { data[r.get('Key')] = JSON.parse(r.get('Value')); } 
+          catch(e) { data[r.get('Key')] = r.get('Value'); }
+        });
+      } else {
+        const arrayData = [];
+        rows.forEach(r => {
+          const item = {};
+          sheet.headerValues.forEach(h => {
+            const val = r.get(h);
+            if (val !== undefined && val !== null && val !== '') {
+              try { item[h] = JSON.parse(val); } catch(e) { item[h] = val; }
+            }
+          });
+          arrayData.push(item);
+        });
+        data[sheet.title] = arrayData;
       }
-    });
+    }
     res.json(data);
   } catch (e) {
+    logger.error({ err: e }, "DB load error");
     res.status(500).json({ error: e.message });
   }
 });
@@ -77,22 +87,61 @@ app.get('/api/db/load', async (req, res) => {
 app.post('/api/db/save', async (req, res) => {
   if (!doc) return res.json({ success: true, warning: "No DB connection" });
   try {
-    const sheet = doc.sheetsByIndex[0];
-    const rows = await sheet.getRows();
+    await doc.loadInfo();
     const payload = req.body;
-
+    
+    // Separate arrays (tabs) and primitives (Settings)
+    const settings = {};
     for (const [key, value] of Object.entries(payload)) {
-      const stringifiedValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
-      const existingRow = rows.find(r => r.get('Key') === key);
-      if (existingRow) {
-        existingRow.set('Data', stringifiedValue);
-        await existingRow.save();
+      if (Array.isArray(value)) {
+        let sheet = doc.sheetsByTitle[key];
+        // Collect all possible keys from all objects in the array to form headers
+        const headersSet = new Set();
+        value.forEach(item => Object.keys(item).forEach(k => headersSet.add(k)));
+        const headers = Array.from(headersSet);
+        
+        if (headers.length === 0) headers.push('ID'); // fallback for empty array
+        
+        if (!sheet) {
+          sheet = await doc.addSheet({ title: key, headerValues: headers });
+        } else {
+          // ensure headers are up to date
+          await sheet.resize({ rowCount: sheet.rowCount || 1, columnCount: Math.max(headers.length, sheet.columnCount || 1) });
+          await sheet.setHeaderRow(headers);
+        }
+        
+        await sheet.clearRows(); // clear old data
+        const rowsToAdd = value.map(item => {
+          const row = {};
+          headers.forEach(h => {
+            row[h] = typeof item[h] === 'object' ? JSON.stringify(item[h]) : item[h];
+          });
+          return row;
+        });
+        if (rowsToAdd.length > 0) await sheet.addRows(rowsToAdd);
       } else {
-        await sheet.addRow({ Key: key, Data: stringifiedValue });
+        settings[key] = value;
       }
     }
+    
+    // Save Settings
+    if (Object.keys(settings).length > 0) {
+      let sheet = doc.sheetsByTitle['Settings'];
+      if (!sheet) {
+        sheet = await doc.addSheet({ title: 'Settings', headerValues: ['Key', 'Value'] });
+      } else {
+        await sheet.setHeaderRow(['Key', 'Value']);
+      }
+      await sheet.clearRows();
+      const rowsToAdd = Object.entries(settings).map(([k, v]) => ({
+        Key: k, Value: typeof v === 'object' ? JSON.stringify(v) : String(v)
+      }));
+      await sheet.addRows(rowsToAdd);
+    }
+    
     res.json({ success: true });
   } catch (e) {
+    logger.error({ err: e }, "DB save error");
     res.status(500).json({ error: e.message });
   }
 });
@@ -545,15 +594,19 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'internal server error' });
 });
 
-const server = app.listen(config.PORT, () => {
-  logger.info({ port: config.PORT, env: config.NODE_ENV }, 'script-skill up');
-});
+let server;
+if (require.main === module) {
+  server = app.listen(config.PORT, () => {
+    logger.info({ port: config.PORT, env: config.NODE_ENV }, 'script-skill up');
+  });
 
-function shutdown(signal) {
-  logger.info({ signal }, 'shutting down');
-  server.close(() => process.exit(0));
-  setTimeout(() => process.exit(1), 10_000).unref();
+  function shutdown(signal) {
+    logger.info({ signal }, 'shutting down');
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(1), 10_000).unref();
+  }
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
 
+module.exports = app;
