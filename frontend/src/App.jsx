@@ -1691,8 +1691,8 @@ function CreatorPlaybookView({ creatorReferences, setCreatorReferences, activeCr
   };
 
   const handleEdit = (creator) => {
-    setNewCreatorName(creator.name);
-    setNewCreatorNotes(creator.styleNotes);
+    setNewCreatorName(creator.name || '');
+    setNewCreatorNotes(creator.styleNotes || creator.notes || '');
     setEditingId(creator.id);
     setIsAdding(true);
   };
@@ -1738,7 +1738,7 @@ function CreatorPlaybookView({ creatorReferences, setCreatorReferences, activeCr
             onChange={e => setNewCreatorNotes(e.target.value)}
             style={{ minHeight: '120px', resize: 'vertical', marginBottom: '1rem' }}
           />
-          <button className="btn" onClick={handleSave} disabled={!newCreatorName.trim() || !newCreatorNotes.trim()}>
+          <button className="btn" onClick={handleSave} disabled={!newCreatorName || !newCreatorNotes || !newCreatorName.trim() || !newCreatorNotes.trim()}>
             Save Creator Reference
           </button>
         </div>
