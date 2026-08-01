@@ -94,7 +94,10 @@ function App() {
   // 1. Initial Load from Google Sheets DB
   useEffect(() => {
     fetch(`${API_URL}/db/load`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error("DB response not ok");
+        return res.json();
+      })
       .then(data => {
         if (data.topics) setTopics(data.topics);
         if (data.sirStyleGuide) setSirStyleGuide(data.sirStyleGuide);
