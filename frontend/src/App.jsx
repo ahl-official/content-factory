@@ -416,7 +416,7 @@ function TopicCard({ topic, onOpen, updateTopic, setError }) {
       </div>
       <h3 style={{ fontSize: '1rem', lineHeight: 1.4, marginBottom: '1rem', fontFamily: 'Inter, sans-serif' }}>{topic.title}</h3>
 
-      {topic.sirFeedback && (
+      {topic.sirFeedback && typeof topic.sirFeedback === 'string' && (
         <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '8px', padding: '0.6rem 0.9rem', marginBottom: '1rem', fontSize: '0.82rem', color: '#6ee7b7', lineHeight: 1.4 }}>
           🎙️ Sir: "{topic.sirFeedback.slice(0, 100)}{topic.sirFeedback.length > 100 ? '…' : ''}"
         </div>
@@ -723,9 +723,10 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
   }, [topic.chatHistory, topic.suggestedAngles, topic.id, topic.title, topic.targetAudienceId, targetAudiences, updateTopic]);
 
   // Derived
-  const latestScript   = topic.scriptVersions.at(-1)?.script || '';
-  const versionCount   = topic.scriptVersions.length;
-  const displayScript  = viewingVersion !== null ? topic.scriptVersions[viewingVersion]?.script : latestScript;
+  const scriptVersions = Array.isArray(topic.scriptVersions) ? topic.scriptVersions : [];
+  const latestScript   = scriptVersions.at(-1)?.script || '';
+  const versionCount   = scriptVersions.length;
+  const displayScript  = viewingVersion !== null ? scriptVersions[viewingVersion]?.script : latestScript;
   const displayVersion = viewingVersion !== null ? viewingVersion + 1 : versionCount;
 
   const handleChat = async (e) => {
@@ -1073,8 +1074,8 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
           </label>
           <h4 style={{ marginBottom: '0.5rem' }}>Sir's Feedback (type or paste directly):</h4>
           <textarea className="input-field" style={{ minHeight: '120px', resize: 'vertical' }}
-            value={topic.sirFeedback}
-            onChange={e => updateTopic(topic.id, { sirFeedback: e.target.value, status: e.target.value.trim() ? 'sir_responded' : topic.status })}
+            value={topic.sirFeedback || ''}
+            onChange={e => updateTopic(topic.id, { sirFeedback: e.target.value, status: (e.target.value || '').trim() ? 'sir_responded' : topic.status })}
             placeholder="Paste Sir's text reply, or upload the audio above to auto-transcribe…" />
           <div style={{ marginTop: '1.5rem' }}>
             {formatSelector}
@@ -1082,7 +1083,7 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
             {thumbnailSelector}
             {editingSelector}
             {targetAudiences.length > 0 && audienceSelector}
-            <button className="btn" onClick={generateScript} disabled={isGenerating || !topic.sirFeedback.trim()}>
+            <button className="btn" onClick={generateScript} disabled={isGenerating || !(topic.sirFeedback || '').trim()}>
               {isGenerating ? <><div className="loader" style={{ width: 18, height: 18, borderWidth: 2 }} /> Generating…</> : '✨ Generate Script'}
             </button>
           </div>
