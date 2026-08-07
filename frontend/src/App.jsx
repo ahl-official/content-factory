@@ -337,7 +337,7 @@ function App() {
       {view === 'editing' && <EditingStylesView editingStyles={editingStyles} setEditingStyles={setEditingStyles} activeEditingStyleId={activeEditingStyleId} setActiveEditingStyleId={setActiveEditingStyleId} />}
       {view === 'formats' && <VideoFormatsView videoFormats={videoFormats} setVideoFormats={setVideoFormats} />}
       {view === 'hooks' && <HookLibraryView hookLibrary={hookLibrary} setHookLibrary={setHookLibrary} />}
-      {view === 'topic' && currentTopic && <TopicDetail topic={currentTopic} updateTopic={updateTopic} onBack={() => setView('board')} setError={setError} sirStyleGuide={sirStyleGuide} learnFromFeedback={learnFromFeedback} creatorReferences={creatorReferences} targetAudiences={targetAudiences} brandVoices={brandVoices} thumbnailStyles={thumbnailStyles} editingStyles={editingStyles} hookLibrary={hookLibrary} activeCreatorId={activeCreatorId} activeAudienceId={activeAudienceId} />}
+      {view === 'topic' && currentTopic && <TopicDetail topic={currentTopic} updateTopic={updateTopic} onBack={() => setView('board')} setError={setError} sirStyleGuide={sirStyleGuide} learnFromFeedback={learnFromFeedback} creatorReferences={creatorReferences} targetAudiences={targetAudiences} brandVoices={brandVoices} thumbnailStyles={thumbnailStyles} editingStyles={editingStyles} hookLibrary={hookLibrary} videoFormats={videoFormats} activeCreatorId={activeCreatorId} activeAudienceId={activeAudienceId} />}
     </div>
   );
 }
@@ -591,7 +591,7 @@ function IdeasView({ ideas, isGenerating, onGenerate, onSelect, customTopic, set
 /* ═══════════════════════════════════════════════
    TOPIC DETAIL
 ═══════════════════════════════════════════════ */
-function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, learnFromFeedback, creatorReferences, targetAudiences, brandVoices, activeCreatorId, activeAudienceId, hookLibrary, thumbnailStyles, editingStyles }) {
+function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, learnFromFeedback, creatorReferences, targetAudiences, brandVoices, activeCreatorId, activeAudienceId, hookLibrary, thumbnailStyles, editingStyles, videoFormats }) {
   const [chatInput, setChatInput]     = useState('');
   const [isChatting, setIsChatting]   = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
