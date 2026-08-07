@@ -51,7 +51,7 @@ initSheet();
 
 // ─── DB Endpoints ────────────────────────────────────────────────────────────
 app.get('/api/db/load', async (req, res) => {
-  if (!doc) return res.json({ topics: [], targetAudiences: [], creatorReferences: [], sirStyleGuide: '', activeCreatorId: null, activeAudienceId: null, hookLibrary: [] });
+  if (!doc) return res.json({ topics: [], targetAudiences: [], creatorReferences: [], sirStyleGuide: '', activeCreatorId: null, activeAudienceId: null, hookLibrary: [], videoFormats: [] });
   try {
     await doc.loadInfo();
     const data = {};
@@ -464,7 +464,7 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
 // ─── Generate final script ────────────────────────────────────────────────────
 app.post('/api/generate', async (req, res) => {
   try {
-    const { topic, context, transcript, sirStyleGuide, creatorInspiration, targetAudience, formatMode = 'reel', brandVoice } = req.body;
+    const { topic, context, transcript, sirStyleGuide, creatorInspiration, targetAudience, videoFormat, brandVoice } = req.body;
     if (!topic) return res.status(400).json({ error: 'topic required' });
 
     let brief = `TOPIC: ${topic}\n`;
@@ -474,7 +474,7 @@ app.post('/api/generate', async (req, res) => {
     if (context) brief += `CONTEXT FROM CONTENT TEAM DISCUSSION:\n${context}\n\n`;
     if (transcript) brief += `RAW VOICE-NOTE FROM VINITT (Sir's direction):\n"""\n${transcript}\n"""`;
 
-    const script = await writeNewScript({ brief, formatMode, brandVoice });
+    const script = await writeNewScript({ brief, videoFormat, brandVoice });
     res.json({ script });
   } catch (err) {
     logger.error({ err: err.message }, 'generate error');
@@ -559,7 +559,7 @@ Return ONLY this JSON (no markdown):
 // Uses the existing editScript() single-pass writer — best for iterations.
 app.post('/api/revise', async (req, res) => {
   try {
-    const { currentScript, sirFeedback, previousRevisions, sirStyleGuide, creatorInspiration, targetAudience, formatMode = 'reel' } = req.body;
+    const { currentScript, sirFeedback, previousRevisions, sirStyleGuide, creatorInspiration, targetAudience, videoFormat, brandVoice } = req.body;
     if (!currentScript) return res.status(400).json({ error: 'currentScript required' });
     if (!sirFeedback)   return res.status(400).json({ error: 'sirFeedback required' });
 
@@ -580,7 +580,7 @@ app.post('/api/revise', async (req, res) => {
     
     const instruction = instructionParts.join('\n\n');
 
-    const revised = await editScript({ historyTurns, instruction, formatMode });
+    const revised = await editScript({ historyTurns, instruction, videoFormat, brandVoice });
     res.json({ script: revised });
   } catch (err) {
     logger.error({ err: err.message }, 'revise error');

@@ -19,16 +19,17 @@ const openai = new OpenAI({
  * Mirrors Vinitt's own workflow ("never one-shot — audit, make it 10/10").
  * Single-pass would routinely ship 6-7/10 drafts.
  */
-async function writeNewScript({ brief, formatMode = 'reel', brandVoice = null }) {
+async function writeNewScript({ brief, videoFormat = null, brandVoice = null }) {
   const briefMessage = { role: 'user', content: formatBrief(brief) };
-  const initialShots = formatMode === 'consultation' ? [] : FEW_SHOTS;
-  const auditPrompt = formatMode === 'consultation' ? CONSULTATION_SCRIPT_AUDIT_PROMPT : AUDIT_PROMPT;
+  const baseType = videoFormat?.baseType || 'reel';
+  const initialShots = baseType === 'consultation' ? [] : FEW_SHOTS;
+  const auditPrompt = baseType === 'consultation' ? CONSULTATION_SCRIPT_AUDIT_PROMPT : AUDIT_PROMPT;
 
   // Pass 1: draft.
   const draft = await runWriter({
     messages: [...initialShots, briefMessage],
     mode: 'new-draft',
-    formatMode,
+    videoFormat,
     brandVoice,
   });
 
@@ -41,7 +42,7 @@ async function writeNewScript({ brief, formatMode = 'reel', brandVoice = null })
       { role: 'user', content: auditPrompt },
     ],
     mode: 'new-audit',
-    formatMode,
+    videoFormat,
     brandVoice,
   });
 
@@ -52,26 +53,28 @@ async function writeNewScript({ brief, formatMode = 'reel', brandVoice = null })
  * Edits are single-pass. The user is iterating — auto-audit would
  * override their direction.
  */
-async function editScript({ historyTurns, instruction, formatMode = 'reel', brandVoice = null }) {
+async function editScript({ historyTurns, instruction, videoFormat = null, brandVoice = null }) {
   const realTurns = historyTurns
     .filter((m) => m.role === 'user' || m.role === 'assistant')
     .map((m) => ({
       role: m.role,
       content: m.role === 'user' ? formatBrief(m.content) : m.content,
     }));
-  const initialShots = formatMode === 'consultation' ? [] : FEW_SHOTS;
+  const baseType = videoFormat?.baseType || 'reel';
+  const initialShots = baseType === 'consultation' ? [] : FEW_SHOTS;
 
   const messages = [
     ...initialShots,
     ...realTurns,
     { role: 'user', content: formatEditInstruction(instruction) },
   ];
-  return runWriter({ messages, mode: 'edit', formatMode, brandVoice });
+  return runWriter({ messages, mode: 'edit', videoFormat, brandVoice });
 }
 
-async function runWriter({ messages, mode, formatMode = 'reel', brandVoice = null }) {
+async function runWriter({ messages, mode, videoFormat = null, brandVoice = null }) {
   const t0 = Date.now();
-  let sysPrompt = formatMode === 'consultation' ? CONSULTATION_SCRIPT_SYSTEM_PROMPT : SYSTEM_PROMPT;
+  const baseType = videoFormat?.baseType || 'reel';
+  let sysPrompt = baseType === 'consultation' ? CONSULTATION_SCRIPT_SYSTEM_PROMPT : SYSTEM_PROMPT;
 
   // Dynamically replace hardcoded AHL with brandVoice name if provided
   if (brandVoice) {
@@ -81,6 +84,11 @@ async function runWriter({ messages, mode, formatMode = 'reel', brandVoice = nul
     
     // Also append the brand rules at the end of the system prompt
     sysPrompt += `\n\n# BRAND IDENTITY & RULES (MANDATORY)\nName: ${brandVoice.name}\nTone: ${brandVoice.tone}\nRules: ${brandVoice.rules}\n`;
+  }
+  
+  // Inject the specific video format rules
+  if (videoFormat && videoFormat.rules) {
+    sysPrompt += `\n\n# VIDEO FORMAT RULES: ${videoFormat.name}\n${videoFormat.rules}\n`;
   }
   const resp = await openai.chat.completions.create({
     model: config.WRITER_MODEL,

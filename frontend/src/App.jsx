@@ -84,6 +84,7 @@ function App() {
   const [brandVoices, setBrandVoices] = useState([]);
   const [thumbnailStyles, setThumbnailStyles] = useState([]);
   const [editingStyles, setEditingStyles] = useState([]);
+  const [videoFormats, setVideoFormats] = useState([]);
   
   const [activeCreatorId, setActiveCreatorId] = useState(null);
   const [activeAudienceId, setActiveAudienceId] = useState(null);
@@ -131,6 +132,14 @@ function App() {
             rules: '1. Pacing & Cut Rules (remove all dead air, J-cuts and L-cuts, jump cuts every 2.5-3 seconds)\n2. Visual Graphics & Zooms (subtle punch-ins on key words, kinetic typography for captions)\n3. SFX & Sound Design (subtle whooshes, risers, heartbeat audio during reveals)\n4. Platform Optimization (9:16 vertical safe zones, loop transition at the end)'
           }]);
         }
+
+        if (data.videoFormats && data.videoFormats.length > 0) {
+          setVideoFormats(data.videoFormats);
+        } else {
+          setVideoFormats([{
+            id: 1, name: 'Educational Reels', baseType: 'reel', rules: 'Focus heavily on teaching the audience something new. Break down complex medical/hair replacement concepts into simple, easily understandable analogies. Never sound like a textbook; sound like a trusted expert explaining it to a friend.'
+          }]);
+        }
         
         if (data.activeCreatorId !== undefined) setActiveCreatorId(data.activeCreatorId);
         if (data.activeAudienceId !== undefined) setActiveAudienceId(data.activeAudienceId);
@@ -157,6 +166,7 @@ function App() {
       brandVoices,
       thumbnailStyles,
       editingStyles,
+      videoFormats,
       activeCreatorId: activeCreatorId || '',
       activeAudienceId: activeAudienceId || '',
       activeBrandVoiceId: activeBrandVoiceId || '',
@@ -168,7 +178,7 @@ function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     }).catch(e => console.error("DB Sync Error:", e));
-  }, [topics, sirStyleGuide, creatorReferences, targetAudiences, hookLibrary, brandVoices, thumbnailStyles, editingStyles, activeCreatorId, activeAudienceId, activeBrandVoiceId, activeThumbnailStyleId, activeEditingStyleId, isLoadingDB]);
+  }, [topics, sirStyleGuide, creatorReferences, targetAudiences, hookLibrary, brandVoices, thumbnailStyles, editingStyles, videoFormats, activeCreatorId, activeAudienceId, activeBrandVoiceId, activeThumbnailStyleId, activeEditingStyleId, isLoadingDB]);
 
   // Called every time Sir gives feedback on anything
   const learnFromFeedback = async ({ sirFeedback, scriptBefore, topic }) => {
@@ -276,6 +286,9 @@ function App() {
         <button className={`btn ${view === 'editing' ? '' : 'btn-secondary'}`} onClick={() => setView('editing')}>
           ✂️ Editing Styles {activeEditingStyleId ? '●' : ''}
         </button>
+        <button className={`btn ${view === 'formats' ? '' : 'btn-secondary'}`} onClick={() => setView('formats')}>
+          🎬 Video Formats
+        </button>
         <button className={`btn ${view === 'hooks' ? '' : 'btn-secondary'}`} onClick={() => setView('hooks')}>
           🪝 Hook Library
         </button>
@@ -322,6 +335,7 @@ function App() {
       {view === 'brands' && <BrandVoicesView brandVoices={brandVoices} setBrandVoices={setBrandVoices} activeBrandVoiceId={activeBrandVoiceId} setActiveBrandVoiceId={setActiveBrandVoiceId} />}
       {view === 'thumbnails' && <ThumbnailStylesView thumbnailStyles={thumbnailStyles} setThumbnailStyles={setThumbnailStyles} activeThumbnailStyleId={activeThumbnailStyleId} setActiveThumbnailStyleId={setActiveThumbnailStyleId} />}
       {view === 'editing' && <EditingStylesView editingStyles={editingStyles} setEditingStyles={setEditingStyles} activeEditingStyleId={activeEditingStyleId} setActiveEditingStyleId={setActiveEditingStyleId} />}
+      {view === 'formats' && <VideoFormatsView videoFormats={videoFormats} setVideoFormats={setVideoFormats} />}
       {view === 'hooks' && <HookLibraryView hookLibrary={hookLibrary} setHookLibrary={setHookLibrary} />}
       {view === 'topic' && currentTopic && <TopicDetail topic={currentTopic} updateTopic={updateTopic} onBack={() => setView('board')} setError={setError} sirStyleGuide={sirStyleGuide} learnFromFeedback={learnFromFeedback} creatorReferences={creatorReferences} targetAudiences={targetAudiences} brandVoices={brandVoices} thumbnailStyles={thumbnailStyles} editingStyles={editingStyles} hookLibrary={hookLibrary} activeCreatorId={activeCreatorId} activeAudienceId={activeAudienceId} />}
     </div>
@@ -791,10 +805,13 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
       const brandRef = brandVoices.find(b => b.id === topic.brandVoiceId);
       const brandVoice = brandRef ? { name: brandRef.name, tone: brandRef.tone, rules: brandRef.rules } : null;
 
+      const videoFormatRef = videoFormats.find(f => f.id === topic.videoFormatId);
+      const videoFormat = videoFormatRef ? { name: videoFormatRef.name, baseType: videoFormatRef.baseType, rules: videoFormatRef.rules } : null;
+
       const context = topic.chatHistory.map(m => `${m.role === 'user' ? 'WRITER' : 'AI'}: ${m.content}`).join('\n');
       const res = await fetch(`${API_URL}/generate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: topic.title, context, transcript: topic.sirFeedback, sirStyleGuide, creatorInspiration, targetAudience, brandVoice, formatMode: topic.formatMode || 'reel' }),
+        body: JSON.stringify({ topic: topic.title, context, transcript: topic.sirFeedback, sirStyleGuide, creatorInspiration, targetAudience, brandVoice, videoFormat }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
       const data = await res.json();
@@ -832,13 +849,15 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
       const audienceRef = targetAudiences.find(a => a.id === topic.targetAudienceId);
       const targetAudience = audienceRef ? audienceRef.notes : null;
 
-      const instruction = sirStyleGuide
-        ? `SIR'S STYLE GUIDE (apply these):\n${sirStyleGuide}\n\nSir's specific note on this draft:\n${revisionFeedback}`
-        : revisionFeedback;
+      const brandRef = brandVoices.find(b => b.id === topic.brandVoiceId);
+      const brandVoice = brandRef ? { name: brandRef.name, tone: brandRef.tone, rules: brandRef.rules } : null;
+
+      const videoFormatRef = videoFormats.find(f => f.id === topic.videoFormatId);
+      const videoFormat = videoFormatRef ? { name: videoFormatRef.name, baseType: videoFormatRef.baseType, rules: videoFormatRef.rules } : null;
 
       const res = await fetch(`${API_URL}/revise`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentScript, sirFeedback: revisionFeedback, previousRevisions, sirStyleGuide, creatorInspiration, targetAudience, formatMode: topic.formatMode || 'reel' }),
+        body: JSON.stringify({ currentScript, sirFeedback: revisionFeedback, previousRevisions, sirStyleGuide, creatorInspiration, targetAudience, brandVoice, videoFormat }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
       const data = await res.json();
@@ -922,9 +941,11 @@ function TopicDetail({ topic, updateTopic, onBack, setError, sirStyleGuide, lear
       <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: '#ddd6fe', fontWeight: 600 }}>
         🎬 Video Script & Hook Mode
       </label>
-      <select className="input-field" style={{ padding: '0.5rem', borderColor: 'rgba(139,92,246,0.4)', background: 'rgba(0,0,0,0.4)', color: '#fff' }} value={topic.formatMode || 'reel'} onChange={e => updateTopic(topic.id, { formatMode: e.target.value })}>
-        <option value="reel">✨ Informational Reel (Vinitt Monologue to Camera)</option>
-        <option value="consultation">🎥 Consultation Mini-Doc (7-Part Reality Interaction)</option>
+      <select className="input-field" style={{ padding: '0.5rem', borderColor: 'rgba(139,92,246,0.4)', background: 'rgba(0,0,0,0.4)', color: '#fff' }} value={topic.videoFormatId || ''} onChange={e => updateTopic(topic.id, { videoFormatId: e.target.value })}>
+        <option value="" disabled>Select Format...</option>
+        {videoFormats.map(f => (
+          <option key={f.id} value={f.id}>{f.baseType === 'consultation' ? '🎥' : '✨'} {f.name}</option>
+        ))}
       </select>
     </div>
   );
@@ -2439,6 +2460,132 @@ function EditingStylesView({ editingStyles, setEditingStyles, activeEditingStyle
               </div>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   VIDEO FORMATS VIEW
+═══════════════════════════════════════════════ */
+function VideoFormatsView({ videoFormats, setVideoFormats }) {
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [newName, setNewName] = useState('');
+  const [newBaseType, setNewBaseType] = useState('reel');
+  const [newRules, setNewRules] = useState('');
+
+  const handleSave = () => {
+    if (!newName.trim() || !newBaseType.trim() || !newRules.trim()) return;
+    if (editingId) {
+      setVideoFormats(videoFormats.map(f => 
+        f.id === editingId ? { ...f, name: newName.trim(), baseType: newBaseType.trim(), rules: newRules.trim() } : f
+      ));
+      setEditingId(null);
+    } else {
+      setVideoFormats([
+        ...videoFormats,
+        { id: Date.now().toString(), name: newName.trim(), baseType: newBaseType.trim(), rules: newRules.trim() }
+      ]);
+    }
+    setIsAdding(false);
+    setNewName('');
+    setNewBaseType('reel');
+    setNewRules('');
+  };
+
+  const handleEdit = (format) => {
+    setNewName(format.name);
+    setNewBaseType(format.baseType || 'reel');
+    setNewRules(format.rules);
+    setEditingId(format.id);
+    setIsAdding(true);
+  };
+
+  const handleDelete = (id) => {
+    if (window.confirm("Delete this video format?")) {
+      setVideoFormats(videoFormats.filter(f => f.id !== id));
+    }
+  };
+
+  return (
+    <div className="glass-panel">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h2>🎬 Video Formats</h2>
+          <p className="subtitle">Define different types of video structures (e.g. Educational, Relatable, Trend, BTS).</p>
+        </div>
+        <button className="btn" onClick={() => { setIsAdding(!isAdding); if(isAdding) setEditingId(null); }}>
+          {isAdding ? 'Cancel' : '+ Add Format'}
+        </button>
+      </div>
+
+      {isAdding && (
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ marginBottom: '1rem' }}>{editingId ? 'Edit Format' : 'Add New Format'}</h3>
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              className="input-field"
+              placeholder="Format Name (e.g., Educational Reels)"
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              style={{ flex: 1, minWidth: '200px' }}
+            />
+            <select
+              className="input-field"
+              value={newBaseType}
+              onChange={e => setNewBaseType(e.target.value)}
+              style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }}
+            >
+              <option value="reel">Standard Reel (Monologue)</option>
+              <option value="consultation">Consultation (Reality Interaction)</option>
+            </select>
+          </div>
+          <textarea
+            className="input-field"
+            placeholder="Specific Rules for this format. E.g. 'Focus heavily on teaching...'"
+            value={newRules}
+            onChange={e => setNewRules(e.target.value)}
+            style={{ minHeight: '120px', resize: 'vertical', marginBottom: '1rem' }}
+          />
+          <button className="btn" onClick={handleSave} disabled={!newName.trim() || !newBaseType.trim() || !newRules.trim()}>
+            Save Format
+          </button>
+        </div>
+      )}
+
+      {videoFormats.length === 0 && !isAdding ? (
+        <div style={{ textAlign: 'center', padding: '3rem 1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
+          <p style={{ color: 'var(--text-muted)' }}>No formats added yet. Click "+ Add Format" to start building.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.2rem' }}>
+          {videoFormats.map(format => (
+            <div key={format.id} style={{ 
+              background: 'rgba(255,255,255,0.04)', 
+              border: '1px solid var(--panel-border)', 
+              borderRadius: '10px', padding: '1.2rem',
+              display: 'flex', flexDirection: 'column'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                <h3 style={{ fontSize: '1.1rem', margin: 0 }}>{format.baseType === 'consultation' ? '🎥' : '✨'} {format.name}</h3>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button onClick={() => handleEdit(format)} style={{ background: 'none', border: 'none', color: '#fde68a', cursor: 'pointer', opacity: 0.7 }}>✏️</button>
+                  <button onClick={() => handleDelete(format.id)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', opacity: 0.7 }}>🗑</button>
+                </div>
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <span style={{ fontSize: '0.75rem', background: 'rgba(139,92,246,0.15)', color: '#ddd6fe', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid rgba(139,92,246,0.3)' }}>
+                  Base: {format.baseType === 'consultation' ? 'Consultation Docs' : 'Standard Reel'}
+                </span>
+              </div>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', lineHeight: 1.5, margin: 0 }}>
+                {format.rules}
+              </p>
+            </div>
+          ))}
         </div>
       )}
     </div>
