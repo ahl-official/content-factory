@@ -65,6 +65,7 @@ function createTopic(title, targetAudienceId = null, brandVoiceId = null) {
 function App() {
   const [view, setView]                     = useState('board');
   const [isLoadingDB, setIsLoadingDB]       = useState(true);
+  const [dbLoadSuccess, setDbLoadSuccess]   = useState(false);
   const [dbError, setDbError]               = useState('');
   
   // State initialization (defaults)
@@ -146,17 +147,19 @@ function App() {
         if (data.activeBrandVoiceId !== undefined) setActiveBrandVoiceId(data.activeBrandVoiceId || 1);
         if (data.activeThumbnailStyleId !== undefined) setActiveThumbnailStyleId(data.activeThumbnailStyleId || 1);
         if (data.activeEditingStyleId !== undefined) setActiveEditingStyleId(data.activeEditingStyleId || 1);
+        
+        setDbLoadSuccess(true);
       })
       .catch(e => {
         console.error("DB Load Error:", e);
-        setDbError("Failed to connect to Google Sheets Database.");
+        setDbError("Failed to connect to Google Sheets Database. Your data will not be saved to prevent overwriting.");
       })
       .finally(() => setIsLoadingDB(false));
   }, []);
 
   // 2. Sync to DB whenever core state changes
   useEffect(() => {
-    if (isLoadingDB) return; // Don't overwrite DB during initial load
+    if (isLoadingDB || !dbLoadSuccess) return; // Don't overwrite DB during initial load or if load failed
     const payload = {
       topics,
       sirStyleGuide,
