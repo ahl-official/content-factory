@@ -5,3 +5,5 @@ memory/
 .vercel/
 dist/
 build/
+
+.vercel

@@ -376,7 +376,18 @@ function BoardView({ topics, setTopics, onOpen, onNew, updateTopic, setError }) 
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))', gap: '1.2rem' }}>
         {topics.map(topic => (
-          <TopicCard key={topic.id} topic={topic} onOpen={() => onOpen(topic.id)} updateTopic={updateTopic} setError={setError} />
+          <TopicCard 
+            key={topic.id} 
+            topic={topic} 
+            onOpen={() => onOpen(topic.id)} 
+            updateTopic={updateTopic} 
+            setError={setError} 
+            onDelete={() => {
+              if (window.confirm('Delete this topic? This cannot be undone.')) {
+                setTopics(topics.filter(t => t.id !== topic.id));
+              }
+            }} 
+          />
         ))}
       </div>
     </div>
@@ -386,7 +397,7 @@ function BoardView({ topics, setTopics, onOpen, onNew, updateTopic, setError }) 
 /* ═══════════════════════════════════════════════
    TOPIC CARD  (board)
 ═══════════════════════════════════════════════ */
-function TopicCard({ topic, onOpen, updateTopic, setError }) {
+function TopicCard({ topic, onOpen, updateTopic, setError, onDelete }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const s = STATUS_LABELS[topic.status];
   const latestScript = topic.scriptVersions.at(-1)?.script || '';
@@ -429,7 +440,10 @@ function TopicCard({ topic, onOpen, updateTopic, setError }) {
         <span style={{ background: s.bg, color: s.color, border: `1px solid ${s.color}40`, borderRadius: '20px', padding: '0.2rem 0.7rem', fontSize: '0.75rem', fontWeight: 600 }}>
           {s.label}
         </span>
-        <button className="btn btn-secondary" onClick={onOpen} style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem' }}>Open</button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className="btn btn-secondary" onClick={onDelete} style={{ padding: '0.3rem 0.5rem', fontSize: '0.8rem', color: '#f87171', borderColor: 'rgba(248,113,113,0.3)', background: 'transparent' }} title="Delete Topic">🗑️</button>
+          <button className="btn btn-secondary" onClick={onOpen} style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem' }}>Open</button>
+        </div>
       </div>
       <h3 style={{ fontSize: '1rem', lineHeight: 1.4, marginBottom: '1rem', fontFamily: 'Inter, sans-serif' }}>{topic.title}</h3>
 
